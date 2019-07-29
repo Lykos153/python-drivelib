@@ -68,7 +68,7 @@ class Remotefolder:
         result['mimeType'] = 'application/vnd.google-apps.folder'
         return self._reply_to_object(result)
         
-    def upload_key(self, key, local_file):
+    def upload_key(self, key, local_file, chunksize=10**7):
         # this won't be the final solution
         # upload should be performed by Key.store("local_file")
         # upload should be resumable. id to resume should be stored in annex
@@ -80,12 +80,14 @@ class Remotefolder:
             'name': key, 
             'parents': [self.id]
         }
-        media = MediaFileUpload(local_file)
+        media = MediaFileUpload(local_file, chunksize=chunksize, resumable=True)
         remote_file = self.service.files().create(body=file_metadata,
                                                     media_body=media,
                                                     fields='id').execute()
         return Key(self, key, remote_file['id'])
         
+    def new_key(self, key):
+        return Key(self, key)
         
     def child_from_path(self, path):
         splitpath = path.strip('/').split('/', 1)
@@ -155,8 +157,26 @@ class Key:
                 else:
                     raise HttpError(resp, content)
 
-    def store(self, local_file, chunksize=10**7, progress_handler=None):
-        raise NotImplementedError
+    def store(self, local_file, chunksize=10*1024**2, progress_handler=None):
+        media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
+        body = {'name': self.key, 'parents': [self.parent.id]}
+        
+        request = ResumableUploadRequest(self.service, media_body=media, body=body)
+        return request
+        if {'resumable_uri','resumable_progress'} <= self.state.keys():
+            print("Muuh")
+            request.resumable_uri = self.state['resumable_uri']
+            request.resumable_progress = self.state['resumable_progress']
+            
+        response = None
+        print("Total size: ", media.size())
+        while response is None:
+            status, response = request.next_chunk()
+            self.state['resumable_uri'] = request.resumable_uri
+            self.state['resumable_progress'] = request.resumable_progress
+            if(progress_handler):
+                progress_handler(request.resumable_progress)
+            print(response)
         
 class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
