@@ -154,15 +154,16 @@ class DriveFile:
         response = None
         print("Total size: ", media.size())
 
-        return request
-        while response is None:
+        # return request
+        while not response:
             status, response = request.next_chunk()
             self.state['resumable_uri'] = request.resumable_uri
             self.state['resumable_progress'] = request.resumable_progress
             if(progress_handler):
                 progress_handler(request.resumable_progress)
             print(response)
-        
+        self.id = json.loads(response)['id']
+
 class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
     # TODO: error handling
@@ -203,13 +204,18 @@ class ResumableUploadRequest:
     @property
     def resumable_progress(self):
         if self._resumable_progress is None:
-            if self._resumable_uri is None:
-                return 0
             upload_range = "bytes */{}".format(self.media_body.size())
             status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
-            byte_range = status['range']
-            self._resumable_progress = int(byte_range.replace('bytes=0-', '', 1))+1
+            if 'range' in status.keys():
+                byte_range = status['range']
+                self._resumable_progress = int(byte_range.replace('bytes=0-', '', 1))+1
+            else:
+                self._resumable_progress = 0
         return self._resumable_progress
+
+    @resumable_progress.setter
+    def resumable_progress(self, resumable_progress):
+        self._resumable_progress = resumable_progress
 
     def next_chunk(self):
         content_length = min(self.media_body.size()-self.resumable_progress, self.media_body.chunksize()) 
