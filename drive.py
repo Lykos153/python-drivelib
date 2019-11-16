@@ -13,7 +13,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
-class Remotefolder:
+class DriveFolder:
 
     def __init__(self, parent, name, id_):
         self.parent = parent
@@ -29,17 +29,7 @@ class Remotefolder:
     @service.setter
     def service(self, service):
         self._service = service
-        
-    @property
-    def annex(self):
-        if hasattr(self, '_annex'):
-            return self._annex
-        return self.parent.annex
-        
-    @annex.setter
-    def annex(self, annex):
-        self._annex = annex
-        
+    
     def child(self, name):
         result = self.service.files().list(
                 pageSize=1,
@@ -68,26 +58,26 @@ class Remotefolder:
         result['mimeType'] = 'application/vnd.google-apps.folder'
         return self._reply_to_object(result)
         
-    def upload_key(self, key, local_file, chunksize=10**7):
+    def upload_file(self, filename, local_file, chunksize=10**7):
         # this won't be the final solution
         # upload should be performed by Key.store("local_file")
         # upload should be resumable. id to resume should be stored in annex
-        file_ = self.child(key)
+        file_ = self.child(filename)
         if file_:
             raise Exception("Filename already exists ({name}).".format(name=name))
 
         file_metadata = {
-            'name': key, 
+            'name': filename, 
             'parents': [self.id]
         }
         media = MediaFileUpload(local_file, chunksize=chunksize, resumable=True)
         remote_file = self.service.files().create(body=file_metadata,
                                                     media_body=media,
                                                     fields='id').execute()
-        return Key(self, key, remote_file['id'])
+        return DriveFile(self, filename, remote_file['id'])
         
-    def new_key(self, key):
-        return Key(self, key)
+    def new_file(self, filename):
+        return DriveFile(self, filename)
         
     def child_from_path(self, path):
         splitpath = path.strip('/').split('/', 1)
@@ -103,13 +93,13 @@ class Remotefolder:
         
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
-            return Remotefolder(self, reply['name'], reply['id'])
+            return DriveFolder(self, reply['name'], reply['id'])
         else:
-            return Key(self, reply['name'], reply['id'])
+            return DriveFile(self, reply['name'], reply['id'])
             
-class Key:
-    def __init__(self, parent, key, id_=None):
-        self.key = key
+class DriveFile:
+    def __init__(self, parent, name, id_=None):
+        self.name = name
         self.id = id_
         self.parent = parent
         self.state = dict()
@@ -117,16 +107,12 @@ class Key:
     @property
     def service(self):
         return self.parent.service
-        
-    @property
-    def annex(self):
-        return self.parent.annex
   
     def remove(self):
         self.service.files().delete(fileId=self.id).execute()
         self.id = None
         
-    def receive(self, local_file, chunksize=10**7, progress_handler=None):
+    def download(self, local_file, chunksize=10**7, progress_handler=None):
         try:
             local_file_size = os.path.getsize(local_file)
         except FileNotFoundError:
@@ -157,19 +143,18 @@ class Key:
                 else:
                     raise HttpError(resp, content)
 
-    def store(self, local_file, chunksize=10*1024**2, progress_handler=None):
+    def upload(self, local_file, chunksize=10*1024**2,
+                resumable_uri=None, progress_handler=None):
         media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
-        body = {'name': self.key, 'parents': [self.parent.id]}
+        body = {'name': self.name, 'parents': [self.parent.id]}
         
         request = ResumableUploadRequest(self.service, media_body=media, body=body)
-        return request
-        if {'resumable_uri','resumable_progress'} <= self.state.keys():
-            print("Muuh")
-            request.resumable_uri = self.state['resumable_uri']
-            request.resumable_progress = self.state['resumable_progress']
+        request.resumable_uri=resumable_uri
             
         response = None
         print("Total size: ", media.size())
+
+        return request
         while response is None:
             status, response = request.next_chunk()
             self.state['resumable_uri'] = request.resumable_uri
@@ -238,20 +223,16 @@ class ResumableUploadRequest:
             self._range_md5.update(bytes)
             if status['x-range-md5'] != self._range_md5.hexdigest():
                 raise Exception("Checksum mismatch. Need to repeat upload.")
-            self._resumable_progress += content_length
+            self.resumable_progress += content_length
         return status, resp
         # TODO (interface) return resumable status object
 
 
 
-class GoogleDrive(Remotefolder):
+class GoogleDrive(DriveFolder):
     def __init__(self):
         self.creds = None
         self.id = "root"
-        
-    def set_root(self, folder):
-        self.id = folder.id
-        self.name = folder.name
     
     def connect(self):
         self.auth()
