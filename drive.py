@@ -59,24 +59,6 @@ class DriveFolder:
         result['mimeType'] = 'application/vnd.google-apps.folder'
         return self._reply_to_object(result)
         
-    def upload_file(self, filename, local_file, chunksize=10**7):
-        # this won't be the final solution
-        # upload should be performed by Key.store("local_file")
-        # upload should be resumable. id to resume should be stored in annex
-        file_ = self.child(filename)
-        if file_:
-            raise Exception("Filename already exists ({name}).".format(name=name))
-
-        file_metadata = {
-            'name': filename, 
-            'parents': [self.id]
-        }
-        media = MediaFileUpload(local_file, chunksize=chunksize, resumable=True)
-        remote_file = self.service.files().create(body=file_metadata,
-                                                    media_body=media,
-                                                    fields='id').execute()
-        return DriveFile(self, filename, remote_file['id'])
-        
     def new_file(self, filename):
         return DriveFile(self, filename)
         
