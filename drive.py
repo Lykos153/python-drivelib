@@ -12,6 +12,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaUploadProgress
 
 class DriveFolder:
 
@@ -103,6 +104,7 @@ class DriveFile:
         self.id = id_
         self.parent = parent
         self.state = dict()
+        self.resumable_uri = None
         
     @property
     def service(self):
@@ -147,22 +149,21 @@ class DriveFile:
                 resumable_uri=None, progress_handler=None):
         media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
         body = {'name': self.name, 'parents': [self.parent.id]}
-        
+                
         request = ResumableUploadRequest(self.service, media_body=media, body=body)
-        request.resumable_uri=resumable_uri
+        if resumable_uri:
+            self.resumable_uri = resumable_uri
+        request.resumable_uri=self.resumable_uri
             
         response = None
-        print("Total size: ", media.size())
-
-        # return request
         while not response:
             status, response = request.next_chunk()
-            self.state['resumable_uri'] = request.resumable_uri
-            self.state['resumable_progress'] = request.resumable_progress
-            if(progress_handler):
-                progress_handler(request.resumable_progress)
-            print(response)
+            self.resumable_uri = request.resumable_uri
+            if status and progress_handler:
+                progress_handler(status.resumable_progress)
         self.id = json.loads(response)['id']
+
+
 
 class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
@@ -174,7 +175,7 @@ class ResumableUploadRequest:
         self.upload_id=upload_id
         self._resumable_progress = None
         self._resumable_uri = None
-        self._range_md5 = hashlib.md5()
+        self._range_md5 = None
 
     @property
     def upload_id(self):
@@ -193,6 +194,8 @@ class ResumableUploadRequest:
         if self._resumable_uri is None:
             api_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" 
             status, resp = self.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
+            if status['status'] != '200':
+                raise Exception(status)
             self._resumable_uri = status['location']
         return self._resumable_uri
         
@@ -206,7 +209,13 @@ class ResumableUploadRequest:
         if self._resumable_progress is None:
             upload_range = "bytes */{}".format(self.media_body.size())
             status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
-            if 'range' in status.keys():
+            
+            if status['status'] not in ('200', '308'):
+                raise Exception(status)
+
+            if status['status'] == '200':
+                self._resumable_progress = self.media_body.size()
+            elif 'range' in status.keys():
                 byte_range = status['range']
                 self._resumable_progress = int(byte_range.replace('bytes=0-', '', 1))+1
             else:
@@ -220,19 +229,23 @@ class ResumableUploadRequest:
     def next_chunk(self):
         content_length = min(self.media_body.size()-self.resumable_progress, self.media_body.chunksize()) 
         upload_range = "bytes {}-{}/{}".format(self.resumable_progress, self.resumable_progress+content_length-1, self.media_body.size()) 
-        bytes = self.media_body.getbytes(self.resumable_progress, content_length)
-        status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=bytes)
-        if resp:
-            pass
-            #TODO upload finished
-        elif status['status'] == '308':
-            self._range_md5.update(bytes)
+        content = self.media_body.getbytes(self.resumable_progress, content_length)
+        status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
+        if status['status'] not in ('200', '308'):
+            raise Exception(status)
+        if status['status'] == '308':
+            if not self._range_md5:
+                self._range_md5 = hashlib.md5()
+                self._range_md5.update(self.media_body.getbytes(0, self.resumable_progress))
+            self._range_md5.update(content)
             if status['x-range-md5'] != self._range_md5.hexdigest():
                 raise Exception("Checksum mismatch. Need to repeat upload.")
             self.resumable_progress += content_length
-        return status, resp
-        # TODO (interface) return resumable status object
-
+        elif status['status'] == '200':
+            self.resumable_progress = self.media_body.size()
+            # TODO: md5sum check for last chunk
+            
+        return MediaUploadProgress(self.resumable_progress, self.media_body.size()), resp
 
 
 class GoogleDrive(DriveFolder):
