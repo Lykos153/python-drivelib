@@ -14,6 +14,9 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaUploadProgress
 
+#TODO: Proper Exceptions
+
+
 class DriveFolder:
 
     def __init__(self, parent, name, id_):
@@ -231,10 +234,21 @@ class ResumableUploadRequest:
 
 
 class GoogleDrive(DriveFolder):
-    def __init__(self):
+    def __init__(self, autoconnect=False):
         self.creds = None
         self.id = "root"
+        self._service = None
+        self.autoconnect = autoconnect
     
+    @property
+    def service(self):
+        if self.autoconnect:
+            self.connect()
+        if self._service:
+            return self._service
+        else:
+            raise Exception("Not connected. Execute connect() first.")
+  
     def connect(self):
         self.auth()
         self.service = build('drive', 'v3', credentials=self.creds)
