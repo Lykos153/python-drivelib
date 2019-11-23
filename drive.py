@@ -254,7 +254,7 @@ class GoogleDrive(DriveFolder):
   
     def connect(self):
         self.auth()
-        self.service = build('drive', 'v3', credentials=self.creds)
+        self._service = build('drive', 'v3', credentials=self.creds)
         
     def auth(self):
         SCOPES = ['https://www.googleapis.com/auth/drive']
