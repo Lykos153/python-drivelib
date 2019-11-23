@@ -45,8 +45,21 @@ class Credentials(google.oauth2.credentials.Credentials,
         to_serialize['scopes'] = self.scopes
         return json.dumps(to_serialize)
 
+class DriveItem:
+    #TODO: metadata as dict
+    # Filename not as attribute but as key
+    # OR: filename as property method
 
-class DriveFolder:
+    def move(self, new_dest):
+        raise NotImplementedError
+    def move_to_path(self, new_path):
+        raise NotImplementedError
+        
+    def remove(self):
+        self.service.files().delete(fileId=self.id).execute()
+        self.id = None
+
+class DriveFolder(DriveItem):
 
     def __init__(self, parent, name, id_):
         self.parent = parent
@@ -72,9 +85,13 @@ class DriveFolder:
         if "nextPageToken" in result:
             raise Exception("Two or more files {name}".format(name=name))
         if not result['files']:
-            return None
+            raise FileNotFoundError(name)
         return self._reply_to_object(result["files"][0])
         
+    def children(self, folders=True, files=True, trashed=False, maxResults=100, orderBy=None):
+        raise NotImplementedError
+        yield something
+
     def mkdir(self, name):
         file_ = self.child(name)
         if file_:
@@ -102,17 +119,13 @@ class DriveFolder:
         else:
             return child.child_from_path(splitpath[1])
         
-    def remove(self):
-        self.service.files().delete(fileId=self.id).execute()
-        self.id = None
-        
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
             return DriveFolder(self, reply['name'], reply['id'])
         else:
             return DriveFile(self, reply['name'], reply['id'])
             
-class DriveFile:
+class DriveFile(DriveItem):
     def __init__(self, parent, name, id_=None):
         self.name = name
         self.id = id_
@@ -302,3 +315,6 @@ class GoogleDrive(DriveFolder):
             except OSError:
                 self.creds = flow.run_console()
         return Credentials.to_json(self.creds)
+
+    def items_by_query(self, query, maxResults=100, orderBy=None):
+        raise NotImplementedError
