@@ -14,6 +14,8 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaUploadProgress
 
+from google.auth.exceptions import RefreshError
+
 #TODO: Proper Exceptions
 
 
@@ -234,8 +236,9 @@ class ResumableUploadRequest:
 
 
 class GoogleDrive(DriveFolder):
-    def __init__(self, autoconnect=False):
-        self.creds = None
+    def __init__(self, gauth_json, creds=None, autoconnect=False):
+        self.creds = creds
+        self.gauth = gauth_json
         self.id = "root"
         self._service = None
         self.autoconnect = autoconnect
@@ -255,23 +258,17 @@ class GoogleDrive(DriveFolder):
         
     def auth(self):
         SCOPES = ['https://www.googleapis.com/auth/drive']
-        
-        if not self.creds:
-            try:
-                with open('token.pickle', 'rb') as token:
-                    self.creds = pickle.load(token)
-            except FileNotFoundError:
-                pass
             
-        if not self.creds or not self.creds.valid:
-            if self.creds and self.creds.expired and self.creds.refresh_token:
+        if self.creds and self.creds.expired and self.creds.refresh_token:
+            try:
                 self.creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES)
-                try:
-                    self.creds = flow.run_local_server()
-                except OSError:
-                    self.creds = flow.run_console()
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(self.creds, token)
+            except RefreshError:
+                pass
+
+        if not self.creds or not self.creds.valid:
+            flow = InstalledAppFlow.from_client_config(self.gauth, SCOPES)
+            try:
+                self.creds = flow.run_local_server()
+            except OSError:
+                self.creds = flow.run_console()
+        return self.creds
