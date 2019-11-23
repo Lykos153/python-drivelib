@@ -10,6 +10,8 @@ from urllib.parse import parse_qs
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import google.oauth2.credentials
+import oauth2client.client
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaUploadProgress
@@ -17,6 +19,31 @@ from googleapiclient.http import MediaUploadProgress
 from google.auth.exceptions import RefreshError
 
 #TODO: Proper Exceptions
+
+class Credentials(google.oauth2.credentials.Credentials,
+                oauth2client.client.Credentials):
+    @classmethod
+    def from_json(cls, json_string):
+        a = json.loads(json_string)
+        return Credentials(
+            token=a['access_token'],
+            refresh_token=a['refresh_token'],
+            id_token=a['id_token'],
+            token_uri=a['token_uri'],
+            client_id=a['client_id'],
+            client_secret=a['client_secret'],
+            scopes=a['scopes'])
+
+    def to_json(self):
+        to_serialize = dict()
+        to_serialize['access_token'] = self.token
+        to_serialize['refresh_token'] = self.refresh_token
+        to_serialize['id_token'] = self.id_token
+        to_serialize['token_uri'] = self.token_uri
+        to_serialize['client_id'] = self.client_id
+        to_serialize['client_secret'] = self.client_secret
+        to_serialize['scopes'] = self.scopes
+        return json.dumps(to_serialize)
 
 
 class DriveFolder:
@@ -236,12 +263,15 @@ class ResumableUploadRequest:
 
 
 class GoogleDrive(DriveFolder):
-    def __init__(self, gauth_json, creds=None, autoconnect=False):
-        self.creds = creds
-        self.gauth = gauth_json
+    def __init__(self, gauth_json, creds_json=None, autoconnect=False):
+        self.gauth = json.loads(gauth_json)
+        if creds_json:
+            self.creds = Credentials.from_json(creds_json)
+        else:
+            self.creds = None
+        self.autoconnect = autoconnect
         self.id = "root"
         self._service = None
-        self.autoconnect = autoconnect
     
     @property
     def service(self):
@@ -271,4 +301,4 @@ class GoogleDrive(DriveFolder):
                 self.creds = flow.run_local_server()
             except OSError:
                 self.creds = flow.run_console()
-        return self.creds
+        return Credentials.to_json(self.creds)
