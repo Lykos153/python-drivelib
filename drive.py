@@ -20,6 +20,9 @@ from google.auth.exceptions import RefreshError
 
 #TODO: Proper Exceptions
 
+class NotAuthenticatedError(Exception):
+    pass
+
 class Credentials(google.oauth2.credentials.Credentials,
                 oauth2client.client.Credentials):
     @classmethod
@@ -296,7 +299,11 @@ class GoogleDrive(DriveFolder):
             raise Exception("Not connected. Execute connect() first.")
   
     def connect(self):
-        self.auth()
+        if not self.creds:
+            raise NotAuthenticatedError()
+        if self.creds.expired and self.creds.refresh_token:
+            self.creds.refresh(Request())
+
         self._service = build('drive', 'v3', credentials=self.creds)
         
     def auth(self):
@@ -314,6 +321,9 @@ class GoogleDrive(DriveFolder):
                 self.creds = flow.run_local_server()
             except OSError:
                 self.creds = flow.run_console()
+        return self.json_creds()
+
+    def json_creds(self):
         return Credentials.to_json(self.creds)
 
     def items_by_query(self, query, maxResults=100, orderBy=None):
