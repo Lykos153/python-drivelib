@@ -53,22 +53,6 @@ class DriveItem:
     # Filename not as attribute but as key
     # OR: filename as property method
 
-    def move(self, new_dest):
-        raise NotImplementedError
-    def move_to_path(self, new_path):
-        raise NotImplementedError
-        
-    def remove(self):
-        self.service.files().delete(fileId=self.id).execute()
-        self.id = None
-
-class DriveFolder(DriveItem):
-
-    def __init__(self, parent, name, id_):
-        self.parent = parent
-        self.id = id_
-        self.name = name
-        
     @property
     def service(self):
         if hasattr(self, '_service'):
@@ -78,6 +62,44 @@ class DriveFolder(DriveItem):
     @service.setter
     def service(self, service):
         self._service = service
+
+    def rename(self, new_name):
+        result = self.service.files().update(
+                                fileId=self.id,
+                                body={"name": new_name},
+                                fields='name',
+                                ).execute()
+        if 'name' in result and result['name'] == new_name:
+            self.name = new_name
+        else:
+            raise Exception()
+
+
+    def move(self, new_dest):
+        result = self.service.files().update(
+                                fileId=self.id,
+                                addParents=new_dest.id,
+                                removeParents=self.parent.id,
+                                fields='parents',
+                                ).execute()
+        if 'parents' in result and new_dest.id in result['parents']:
+            self.parent = new_dest
+        else:
+            raise Exception()
+
+    def move_to_path(self, new_path):
+        raise NotImplementedError
+        
+    def remove(self):
+        self.service.files().delete(fileId=self.id).execute()
+        self.id = None
+
+class DriveFolder(DriveItem):
+    def __init__(self, parent, name, id_):
+        self.parent = parent
+        self.id = id_
+        self.name = name
+        
     
     def child(self, name):
         result = self.service.files().list(
@@ -158,14 +180,6 @@ class DriveFile(DriveItem):
         self.parent = parent
         self.state = dict()
         self.resumable_uri = None
-        
-    @property
-    def service(self):
-        return self.parent.service
-  
-    def remove(self):
-        self.service.files().delete(fileId=self.id).execute()
-        self.id = None
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
         try:
