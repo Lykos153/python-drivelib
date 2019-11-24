@@ -91,9 +91,32 @@ class DriveFolder(DriveItem):
             raise FileNotFoundError(name)
         return self._reply_to_object(result["files"][0])
         
-    def children(self, folders=True, files=True, trashed=False, maxResults=100, orderBy=None):
-        raise NotImplementedError
-        yield something
+    def children(self, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):
+        query = "'{this}' in parents".format(this=self.id)
+        if not folders and not files:
+            return
+        elif not files:
+            query += " and mimeType = 'application/vnd.google-apps.folder'"
+        elif not folders:
+            query += " and mimeType != 'application/vnd.google-apps.folder'"
+        if trashed:
+            query += " and trashed = true"
+        else:
+            query += " and trashed = false"
+
+        result = {'nextPageToken': ''}
+        while "nextPageToken" in result:
+            result = self.service.files().list(
+                    pageSize=pageSize,
+                    fields="nextPageToken, files(id, name, mimeType)",
+                    q=query,
+                    pageToken=result['nextPageToken'],
+                    orderBy=orderBy,
+                ).execute()
+            items = result.get('files', [])
+
+            for file_ in items:
+                yield self._reply_to_object(file_)
 
     def mkdir(self, name):
         file_ = self.child(name)
