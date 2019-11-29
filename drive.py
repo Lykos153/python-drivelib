@@ -53,18 +53,21 @@ class DriveItem:
     # Filename not as attribute but as key
     # OR: filename as property method
 
+    def __init__(self, drive, parent_ids, name, id_):
+        self.drive = drive
+        self.name = name
+        self.id = id_
+        self.parent_ids = parent_ids
+
     @property
-    def service(self):
-        if hasattr(self, '_service'):
-            return self._service
-        return self.parent.service
-        
-    @service.setter
-    def service(self, service):
-        self._service = service
+    def parent(self):
+        if self.parent_ids:
+            return self.drive.item_by_id(self.parent_ids[0])
+        else:
+            return None
 
     def rename(self, new_name):
-        result = self.service.files().update(
+        result = self.drive.service.files().update(
                                 fileId=self.id,
                                 body={"name": new_name},
                                 fields='name',
@@ -76,7 +79,7 @@ class DriveItem:
 
 
     def move(self, new_dest):
-        result = self.service.files().update(
+        result = self.drive.service.files().update(
                                 fileId=self.id,
                                 addParents=new_dest.id,
                                 removeParents=self.parent.id,
@@ -91,18 +94,13 @@ class DriveItem:
         raise NotImplementedError
         
     def remove(self):
-        self.service.files().delete(fileId=self.id).execute()
+        self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
 
-class DriveFolder(DriveItem):
-    def __init__(self, parent, name, id_):
-        self.parent = parent
-        self.id = id_
-        self.name = name
-        
+class DriveFolder(DriveItem):        
     
     def child(self, name):
-        result = self.service.files().list(
+        result = self.drive.service.files().list(
                 pageSize=1,
                 fields="nextPageToken, files(id, name, mimeType)",
                 q="'{this}' in parents and name='{name}'".format(this=self.id, name=name)
@@ -126,19 +124,7 @@ class DriveFolder(DriveItem):
         else:
             query += " and trashed = false"
 
-        result = {'nextPageToken': ''}
-        while "nextPageToken" in result:
-            result = self.service.files().list(
-                    pageSize=pageSize,
-                    fields="nextPageToken, files(id, name, mimeType)",
-                    q=query,
-                    pageToken=result['nextPageToken'],
-                    orderBy=orderBy,
-                ).execute()
-            items = result.get('files', [])
-
-            for file_ in items:
-                yield self._reply_to_object(file_)
+        return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy)
 
     def mkdir(self, name):
         file_ = self.child(name)
@@ -152,7 +138,7 @@ class DriveFolder(DriveItem):
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [self.id]
         }
-        result = self.service.files().create(body=file_metadata, fields='id, name').execute()
+        result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
         result['mimeType'] = 'application/vnd.google-apps.folder'
         return self._reply_to_object(result)
         
@@ -169,17 +155,15 @@ class DriveFolder(DriveItem):
         
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
-            return DriveFolder(self, reply['name'], reply['id'])
+            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'])
         else:
-            return DriveFile(self, reply['name'], reply['id'])
-            
+            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'])
+
 class DriveFile(DriveItem):
-    def __init__(self, parent, name, id_=None):
-        self.name = name
-        self.id = id_
-        self.parent = parent
-        self.state = dict()
-        self.resumable_uri = None
+
+    def __init__(self, drive, parent_ids, name, id_, resumable_uri=None):
+        super().__init__(drive, parent_ids, name, id_)
+        self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
         try:
@@ -187,7 +171,7 @@ class DriveFile(DriveItem):
         except FileNotFoundError:
             local_file_size = 0
         
-        remote_file_size = int(self.service.files().\
+        remote_file_size = int(self.drive.service.files().\
                             get(fileId=self.id, fields="size").\
                             execute()['size'])
         
@@ -201,7 +185,7 @@ class DriveFile(DriveItem):
                     
                 # replace with googleapiclient.http.HttpRequest if possible
                 # or patch MediaIoBaseDownload to support Range
-                resp, content = self.service._http.request(
+                resp, content = self.drive.service._http.request(
                                             download_url,
                                             headers={'Range': download_range})
                 if resp.status == 206:
@@ -217,7 +201,7 @@ class DriveFile(DriveItem):
         media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
         body = {'name': self.name, 'parents': [self.parent.id]}
                 
-        request = ResumableUploadRequest(self.service, media_body=media, body=body)
+        request = ResumableUploadRequest(self.drive.service, media_body=media, body=body)
         if resumable_uri:
             self.resumable_uri = resumable_uri
         request.resumable_uri=self.resumable_uri
@@ -236,7 +220,7 @@ class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
     # TODO: error handling
     def __init__(self, service, media_body, body, upload_id=None):
-        self.service = service
+        self.drive.service = service
         self.media_body = media_body
         self.body = body
         self.upload_id=upload_id
@@ -260,7 +244,7 @@ class ResumableUploadRequest:
     def resumable_uri(self):
         if self._resumable_uri is None:
             api_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" 
-            status, resp = self.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
+            status, resp = self.drive.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
             if status['status'] != '200':
                 raise Exception(status)
             self._resumable_uri = status['location']
@@ -275,7 +259,7 @@ class ResumableUploadRequest:
     def resumable_progress(self):
         if self._resumable_progress is None:
             upload_range = "bytes */{}".format(self.media_body.size())
-            status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
+            status, resp = self.drive.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
             
             if status['status'] not in ('200', '308'):
                 raise Exception(status)
@@ -297,7 +281,7 @@ class ResumableUploadRequest:
         content_length = min(self.media_body.size()-self.resumable_progress, self.media_body.chunksize()) 
         upload_range = "bytes {}-{}/{}".format(self.resumable_progress, self.resumable_progress+content_length-1, self.media_body.size()) 
         content = self.media_body.getbytes(self.resumable_progress, content_length)
-        status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
+        status, resp = self.drive.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
         if status['status'] not in ('200', '308'):
             raise Exception(status)
         if status['status'] == '308':
@@ -325,7 +309,8 @@ class GoogleDrive(DriveFolder):
         self.autoconnect = autoconnect
         self.id = "root"
         self._service = None
-    
+        self.drive = self
+
     @property
     def service(self):
         if self.autoconnect:
@@ -342,6 +327,7 @@ class GoogleDrive(DriveFolder):
             self.creds.refresh(Request())
 
         self._service = build('drive', 'v3', credentials=self.creds)
+        self.id = self.item_by_id("root").id
         
     def auth(self):
         SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -363,5 +349,27 @@ class GoogleDrive(DriveFolder):
     def json_creds(self):
         return Credentials.to_json(self.creds)
 
-    def items_by_query(self, query, maxResults=100, orderBy=None):
-        raise NotImplementedError
+    def items_by_query(self, query, pageSize=100, orderBy=None):
+        result = {'nextPageToken': ''}
+        while "nextPageToken" in result:
+            result = self.drive.service.files().list(
+                    pageSize=pageSize,
+                    fields="nextPageToken, files(id, name, mimeType, parents)",
+                    q=query,
+                    pageToken=result['nextPageToken'],
+                    orderBy=orderBy,
+                ).execute()
+            items = result.get('files', [])
+
+            for file_ in items:
+                print (file_)
+                yield self._reply_to_object(file_)
+
+    def item_by_id(self, id_):
+        if id_ == self.id:
+            return self
+        result = self.service.files().get(
+                                fileId=self.id,
+                                fields="id, name, mimeType, parents"
+                            ).execute()
+        return self._reply_to_object(result)
