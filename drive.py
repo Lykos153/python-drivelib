@@ -374,7 +374,6 @@ class GoogleDrive(DriveFolder):
             items = result.get('files', [])
 
             for file_ in items:
-                print (file_)
                 yield self._reply_to_object(file_)
 
     def item_by_id(self, id_):
