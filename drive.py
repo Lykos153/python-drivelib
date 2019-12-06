@@ -156,8 +156,7 @@ class DriveFolder(DriveItem):
                 'mimeType': 'application/vnd.google-apps.folder',
                 'parents': [self.id]
             }
-            result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
-            result['mimeType'] = 'application/vnd.google-apps.folder'
+            result = self.drive.service.files().create(body=file_metadata, fields='id, name, mimeType').execute()
             return self._reply_to_object(result)
         
     def new_file(self, filename):
