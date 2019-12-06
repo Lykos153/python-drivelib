@@ -107,11 +107,27 @@ class DriveFolder(DriveItem):
     def isfolder(self):
         return True  
     
-    def child(self, name):
+    def _narrow_query(self, query, folders=True, files=True, trashed=False):
+        if folders and not files:
+            query += " and mimeType = 'application/vnd.google-apps.folder'"
+        elif files and not folders:
+            query += " and mimeType != 'application/vnd.google-apps.folder'"
+        if trashed:
+            query += " and trashed = true"
+        else:
+            query += " and trashed = false"
+        return query
+
+    def child(self, name, folders=True, files=True, trashed=False):
+        query = "'{this}' in parents and name='{name}'".format(this=self.id, name=name)
+        if not folders and not files:
+            raise FileNotFoundError(name)
+        query = self._narrow_query(query, folders, files, trashed)
+
         result = self.drive.service.files().list(
                 pageSize=1,
                 fields="nextPageToken, files(id, name, mimeType)",
-                q="'{this}' in parents and name='{name}'".format(this=self.id, name=name)
+                q=query
             ).execute()
         if "nextPageToken" in result:
             raise Exception("Two or more files {name}".format(name=name))
@@ -123,14 +139,7 @@ class DriveFolder(DriveItem):
         query = "'{this}' in parents".format(this=self.id)
         if not folders and not files:
             return
-        elif not files:
-            query += " and mimeType = 'application/vnd.google-apps.folder'"
-        elif not folders:
-            query += " and mimeType != 'application/vnd.google-apps.folder'"
-        if trashed:
-            query += " and trashed = true"
-        else:
-            query += " and trashed = false"
+        query = self._narrow_query(query, folders, files, trashed)
 
         return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy)
 
