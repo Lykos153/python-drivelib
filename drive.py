@@ -1,6 +1,7 @@
 import pickle
 
 import os
+from abc import ABC, abstractmethod
 import json
 
 import hashlib
@@ -48,7 +49,7 @@ class Credentials(google.oauth2.credentials.Credentials,
         to_serialize['scopes'] = self.scopes
         return json.dumps(to_serialize)
 
-class DriveItem:
+class DriveItem(ABC):
     #TODO: metadata as dict
     # Filename not as attribute but as key
     # OR: filename as property method
@@ -97,7 +98,14 @@ class DriveItem:
         self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
 
-class DriveFolder(DriveItem):        
+    @abstractmethod
+    def isfolder(self):
+        pass
+
+class DriveFolder(DriveItem):      
+
+    def isfolder(self):
+        return True  
     
     def child(self, name):
         result = self.drive.service.files().list(
@@ -127,20 +135,21 @@ class DriveFolder(DriveItem):
         return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy)
 
     def mkdir(self, name):
-        file_ = self.child(name)
-        if file_:
-            if not hasattr(file_, "child"):
+        try:
+            file_ = self.child(name)
+            if not file_.isfolder():
                 raise Exception("Filename already exists ({name}) and it's not a folder.".format(name=name))
             return file_
-
-        file_metadata = {
-            'name': name, 
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [self.id]
-        }
-        result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
-        result['mimeType'] = 'application/vnd.google-apps.folder'
-        return self._reply_to_object(result)
+        except FileNotFoundError:
+            #TODO: Don't use exception for flow control here. Maybe implement exists()
+            file_metadata = {
+                'name': name, 
+                'mimeType': 'application/vnd.google-apps.folder',
+                'parents': [self.id]
+            }
+            result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
+            result['mimeType'] = 'application/vnd.google-apps.folder'
+            return self._reply_to_object(result)
         
     def new_file(self, filename):
         return DriveFile(self, filename)
@@ -159,7 +168,10 @@ class DriveFolder(DriveItem):
         else:
             return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'])
 
-class DriveFile(DriveItem):
+class DriveFile(DriveItem):  
+
+    def isfolder(self):
+        return False  
 
     def __init__(self, drive, parent_ids, name, id_, resumable_uri=None):
         super().__init__(drive, parent_ids, name, id_)
