@@ -160,7 +160,7 @@ class DriveFolder(DriveItem):
             return self._reply_to_object(result)
         
     def new_file(self, filename):
-        return DriveFile(self, filename)
+        return DriveFile(self.drive, [self.id], filename)
         
     def child_from_path(self, path):
         splitpath = path.strip('/').split('/', 1)
@@ -181,8 +181,8 @@ class DriveFile(DriveItem):
     def isfolder(self):
         return False  
 
-    def __init__(self, drive, parent_ids, name, id_, resumable_uri=None):
-        super().__init__(drive, parent_ids, name, id_)
+    def __init__(self, drive, parent_ids, filename, file_id=None, resumable_uri=None):
+        super().__init__(drive, parent_ids, filename, file_id)
         self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
