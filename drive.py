@@ -219,9 +219,12 @@ class DriveFile(DriveItem):
     def upload(self, local_file, chunksize=10*1024**2,
                 resumable_uri=None, progress_handler=None):
         media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
-        body = {'name': self.name, 'parents': [self.parent.id]}
+        file_metadata = {
+            'name': self.name, 
+            'parents': self.parent_ids
+        }
                 
-        request = ResumableUploadRequest(self.drive.service, media_body=media, body=body)
+        request = ResumableUploadRequest(self.drive.service, media_body=media, body=file_metadata)
         if resumable_uri:
             self.resumable_uri = resumable_uri
         request.resumable_uri=self.resumable_uri
@@ -233,6 +236,15 @@ class DriveFile(DriveItem):
             if status and progress_handler:
                 progress_handler(status.resumable_progress)
         self.id = json.loads(response)['id']
+
+    def upload_empty(self):
+        file_metadata = {
+            'name': self.name, 
+            'parents': self.parent_ids
+        }
+        result = self.drive.service.files().create(body=file_metadata, fields='id').execute()
+        self.id = result['id']
+       
 
 
 
