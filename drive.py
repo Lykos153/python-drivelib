@@ -49,6 +49,11 @@ class Credentials(google.oauth2.credentials.Credentials,
         to_serialize['scopes'] = self.scopes
         return json.dumps(to_serialize)
 
+class ResumableMediaUploadProgress(MediaUploadProgress):
+    def __init__(self, resumable_progress, total_size, resumable_uri):
+        super().__init__(resumable_progress, total_size)
+        self.resumable_uri = resumable_uri
+
 class DriveItem(ABC):
     #TODO: metadata as dict
     # Filename not as attribute but as key
@@ -242,7 +247,7 @@ class DriveFile(DriveItem):
             status, response = request.next_chunk()
             self.resumable_uri = request.resumable_uri
             if status and progress_handler:
-                progress_handler(status.resumable_progress)
+                progress_handler(status)
         result = json.loads(response)
         self.id = result['id']
         self.name = result['name']
@@ -339,7 +344,7 @@ class ResumableUploadRequest:
             self.resumable_progress = self.media_body.size()
             # TODO: md5sum check for last chunk
             
-        return MediaUploadProgress(self.resumable_progress, self.media_body.size()), resp
+        return ResumableMediaUploadProgress(self.resumable_progress, self.media_body.size(), self.resumable_uri), resp
 
 
 class GoogleDrive(DriveFolder):
