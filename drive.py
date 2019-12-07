@@ -362,7 +362,7 @@ class GoogleDrive(DriveFolder):
 
     @property
     def service(self):
-        if self.autoconnect:
+        if not self._service and self.autoconnect:
             self.connect()
         if self._service:
             return self._service
