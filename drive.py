@@ -68,28 +68,18 @@ class DriveItem(ABC):
             return None
 
     def rename(self, new_name):
+        self.move(self.parent, new_name)
+
+    def move(self, new_dest, new_name=None):
         result = self.drive.service.files().update(
                                 fileId=self.id,
-                                body={"name": new_name},
-                                fields='name',
-                                ).execute()
-        if 'name' in result and result['name'] == new_name:
-            self.name = new_name
-        else:
-            raise Exception()
-
-
-    def move(self, new_dest):
-        result = self.drive.service.files().update(
-                                fileId=self.id,
+                                body={"name": new_name or self.name},
                                 addParents=new_dest.id,
                                 removeParents=self.parent.id,
-                                fields='parents',
+                                fields='name, parents',
                                 ).execute()
+        self.name = result['name']
         self.parent_ids = result.get('parents', [])
-        
-    def move_to_path(self, new_path):
-        raise NotImplementedError
         
     def remove(self):
         self.drive.service.files().delete(fileId=self.id).execute()
