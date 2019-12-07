@@ -252,7 +252,7 @@ class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
     # TODO: error handling
     def __init__(self, service, media_body, body, upload_id=None):
-        self.drive.service = service
+        self.service = service
         self.media_body = media_body
         self.body = body
         self.upload_id=upload_id
@@ -276,7 +276,7 @@ class ResumableUploadRequest:
     def resumable_uri(self):
         if self._resumable_uri is None:
             api_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" 
-            status, resp = self.drive.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
+            status, resp = self.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
             if status['status'] != '200':
                 raise Exception(status)
             self._resumable_uri = status['location']
@@ -291,7 +291,7 @@ class ResumableUploadRequest:
     def resumable_progress(self):
         if self._resumable_progress is None:
             upload_range = "bytes */{}".format(self.media_body.size())
-            status, resp = self.drive.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
+            status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
             
             if status['status'] not in ('200', '308'):
                 raise Exception(status)
@@ -313,7 +313,7 @@ class ResumableUploadRequest:
         content_length = min(self.media_body.size()-self.resumable_progress, self.media_body.chunksize()) 
         upload_range = "bytes {}-{}/{}".format(self.resumable_progress, self.resumable_progress+content_length-1, self.media_body.size()) 
         content = self.media_body.getbytes(self.resumable_progress, content_length)
-        status, resp = self.drive.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
+        status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
         if status['status'] not in ('200', '308'):
             raise Exception(status)
         if status['status'] == '308':
@@ -384,7 +384,7 @@ class GoogleDrive(DriveFolder):
     def items_by_query(self, query, pageSize=100, orderBy=None):
         result = {'nextPageToken': ''}
         while "nextPageToken" in result:
-            result = self.drive.service.files().list(
+            result = self.service.files().list(
                     pageSize=pageSize,
                     fields="nextPageToken, files(id, name, mimeType, parents)",
                     q=query,
