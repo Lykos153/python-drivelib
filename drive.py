@@ -169,6 +169,14 @@ class DriveFolder(DriveItem):
             return child
         else:
             return child.child_from_path(splitpath[1])
+
+    def create_path(self, path):
+        splitpath = path.strip('/').split('/', 1)
+        child = self.mkdir(splitpath[0])
+        if len (splitpath) == 1:
+            return child
+        else:
+            return child.create_path(splitpath[1])
         
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
