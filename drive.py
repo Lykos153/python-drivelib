@@ -85,6 +85,14 @@ class DriveItem(ABC):
         self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
 
+    def refresh(self):
+        result = self.drive.service.files().get(
+                                fileId=self.id,
+                                fields=self.drive.default_fields
+                            ).execute()
+        self.name = result['name']
+        self.parent_ids = result['parents']
+
     @abstractmethod
     def isfolder(self):
         pass
