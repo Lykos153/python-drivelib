@@ -86,11 +86,8 @@ class DriveItem(ABC):
                                 removeParents=self.parent.id,
                                 fields='parents',
                                 ).execute()
-        if 'parents' in result and new_dest.id in result['parents']:
-            self.parent = new_dest
-        else:
-            raise Exception()
-
+        self.parent_ids = result.get('parents', [])
+        
     def move_to_path(self, new_path):
         raise NotImplementedError
         
@@ -126,7 +123,7 @@ class DriveFolder(DriveItem):
 
         result = self.drive.service.files().list(
                 pageSize=1,
-                fields="nextPageToken, files(id, name, mimeType)",
+                fields="nextPageToken, files({})".format(self.drive.default_fields),
                 q=query
             ).execute()
         if "nextPageToken" in result:
@@ -156,7 +153,7 @@ class DriveFolder(DriveItem):
                 'mimeType': 'application/vnd.google-apps.folder',
                 'parents': [self.id]
             }
-            result = self.drive.service.files().create(body=file_metadata, fields='id, name, mimeType').execute()
+            result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
             return self._reply_to_object(result)
         
     def new_file(self, filename):
@@ -257,7 +254,7 @@ class DriveFile(DriveItem):
             'name': self.name, 
             'parents': self.parent_ids
         }
-        result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
+        result = self.drive.service.files().create(body=file_metadata, fields=self.default_fields).execute()
         self.id = result['id']
         self.name = result['name']
        
@@ -358,6 +355,7 @@ class GoogleDrive(DriveFolder):
         self.id = None
         self._service = None
         self.drive = self
+        self.default_fields = 'id, name, mimeType, parents'
 
     @property
     def service(self):
@@ -402,7 +400,7 @@ class GoogleDrive(DriveFolder):
         while "nextPageToken" in result:
             result = self.service.files().list(
                     pageSize=pageSize,
-                    fields="nextPageToken, files(id, name, mimeType, parents)",
+                    fields="nextPageToken, files({})".format(self.default_fields),
                     q=query,
                     pageToken=result['nextPageToken'],
                     orderBy=orderBy,
@@ -417,6 +415,6 @@ class GoogleDrive(DriveFolder):
             return self
         result = self.service.files().get(
                                 fileId=id_,
-                                fields="id, name, mimeType, parents"
+                                fields=self.default_fields
                             ).execute()
         return self._reply_to_object(result)
