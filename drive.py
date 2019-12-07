@@ -355,7 +355,7 @@ class GoogleDrive(DriveFolder):
         else:
             self.creds = None
         self.autoconnect = autoconnect
-        self.id = "root"
+        self.id = None
         self._service = None
         self.drive = self
 
@@ -416,7 +416,7 @@ class GoogleDrive(DriveFolder):
         if id_ == self.id:
             return self
         result = self.service.files().get(
-                                fileId=self.id,
+                                fileId=id_,
                                 fields="id, name, mimeType, parents"
                             ).execute()
         return self._reply_to_object(result)
