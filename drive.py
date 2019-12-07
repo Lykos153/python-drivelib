@@ -165,6 +165,8 @@ class DriveFolder(DriveItem):
     def child_from_path(self, path):
         splitpath = path.strip('/').split('/', 1)
         child = self.child(splitpath[0])
+        if child.name != splitpath[0]:
+            raise Exception("Could not access {}".format(splitpath[0]))
         if len (splitpath) == 1:
             return child
         else:
@@ -173,6 +175,9 @@ class DriveFolder(DriveItem):
     def create_path(self, path):
         splitpath = path.strip('/').split('/', 1)
         child = self.mkdir(splitpath[0])
+        if child.name != splitpath[0]:
+            child.remove()
+            raise Exception("Failed to create {}".format(splitpath[0]))
         if len (splitpath) == 1:
             return child
         else:
@@ -243,15 +248,18 @@ class DriveFile(DriveItem):
             self.resumable_uri = request.resumable_uri
             if status and progress_handler:
                 progress_handler(status.resumable_progress)
-        self.id = json.loads(response)['id']
+        result = json.loads(response)
+        self.id = result['id']
+        self.name = result['name']
 
     def upload_empty(self):
         file_metadata = {
             'name': self.name, 
             'parents': self.parent_ids
         }
-        result = self.drive.service.files().create(body=file_metadata, fields='id').execute()
+        result = self.drive.service.files().create(body=file_metadata, fields='id, name').execute()
         self.id = result['id']
+        self.name = result['name']
        
 
 
