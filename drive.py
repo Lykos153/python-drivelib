@@ -355,64 +355,43 @@ class ResumableUploadRequest:
 
 
 class GoogleDrive(DriveFolder):
-    def __init__(self, gauth_json, creds_json=None, autoconnect=False):
-        self.gauth = json.loads(gauth_json)
-        if creds_json:
-            self.creds = Credentials.from_json(creds_json)
-        else:
-            self.creds = None
-        self.autoconnect = autoconnect
-        self.id = None
-        self._service = None
-        self.drive = self
-        self.spaces = 'drive'
+
+    @classmethod
+    def auth(cls, gauth, appdatafolder=False):
+        SCOPES = ['https://www.googleapis.com/auth/drive']
+        if appdatafolder:
+            SCOPES += ['https://www.googleapis.com/auth/drive.appdata']
+
+        flow = InstalledAppFlow.from_client_config(gauth, SCOPES)
+        try:
+            creds = flow.run_local_server()
+        except OSError:
+            creds = flow.run_console()
+        if not creds.has_scopes(SCOPES):
+            raise NotAuthenticatedError("Could not get requested scopes")
+        return Credentials.to_json(creds)
+
+    def __init__(self, creds_json):
+        self.creds = Credentials.from_json(creds_json)
+
+        if self.creds.expired and self.creds.refresh_token:
+            self.creds.refresh(Request())
+
+        self._service = build('drive', 'v3', credentials=self.creds)
+        root_folder = self.item_by_id("root")
+
+        super().__init__(self, root_folder.parent_ids, root_folder.name, root_folder.id, root_folder.spaces)
+
+        if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
+            self.appdata = self.item_by_id("appDataFolder")
+        
         self.default_fields = 'id, name, mimeType, parents, spaces'
         #self.caching = caching
         #TODO: Add caching ability
 
     @property
     def service(self):
-        if not self._service and self.autoconnect:
-            self.connect()
-        if self._service:
-            return self._service
-        else:
-            raise Exception("Not connected. Execute connect() first.")
-  
-    def connect(self):
-        if not self.creds:
-            raise NotAuthenticatedError()
-        if self.creds.expired and self.creds.refresh_token:
-            self.creds.refresh(Request())
-
-        self._service = build('drive', 'v3', credentials=self.creds)
-        root_folder = self.item_by_id("root")
-        self.id = root_folder.id
-        self.name = root_folder.name
-        if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
-            self.appdata = self.item_by_id("appDataFolder")
-
-        
-    def auth(self, appdatafolder=False):
-        SCOPES = ['https://www.googleapis.com/auth/drive']
-        if appdatafolder:
-            SCOPES += ['https://www.googleapis.com/auth/drive.appdata']
-            
-        if self.creds and self.creds.expired and self.creds.refresh_token:
-            try:
-                self.creds.refresh(Request())
-            except RefreshError:
-                pass
-
-        if not self.creds or not self.creds.valid:
-            flow = InstalledAppFlow.from_client_config(self.gauth, SCOPES)
-            try:
-                self.creds = flow.run_local_server()
-            except OSError:
-                self.creds = flow.run_console()
-        if not self.creds.has_scopes(SCOPES):
-            raise NotAuthenticatedError("Could not get requested scopes")
-        return self.json_creds()
+        return self._service
 
     def json_creds(self):
         return Credentials.to_json(self.creds)
