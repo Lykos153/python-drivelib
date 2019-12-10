@@ -14,6 +14,7 @@ import oauth2client.client
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaUploadProgress
+from googleapiclient.http import MediaDownloadProgress
 
 from google.auth.exceptions import RefreshError
 
@@ -227,7 +228,7 @@ class DriveFile(DriveItem):
                         fh.write(content)
                         local_file_size+=int(resp['content-length'])
                         if progress_handler:
-                            progress_handler(local_file_size)
+                            progress_handler(MediaDownloadProgress(local_file_size, remote_file_size))
                 else:
                     raise HttpError(resp, content)
 
@@ -364,6 +365,7 @@ class GoogleDrive(DriveFolder):
         self.id = None
         self._service = None
         self.drive = self
+        self.spaces = 'drive'
         self.default_fields = 'id, name, mimeType, parents, spaces'
         #self.caching = caching
         #TODO: Add caching ability
@@ -384,7 +386,9 @@ class GoogleDrive(DriveFolder):
             self.creds.refresh(Request())
 
         self._service = build('drive', 'v3', credentials=self.creds)
-        self.id = self.item_by_id("root").id
+        root_folder = self.item_by_id("root")
+        self.id = root_folder.id
+        self.name = root_folder.name
         if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
             self.appdata = self.item_by_id("appDataFolder")
 
