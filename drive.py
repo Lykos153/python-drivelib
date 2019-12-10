@@ -101,12 +101,13 @@ class DriveItem(ABC):
     def isfolder(self):
         pass
 
-class DriveFolder(DriveItem):      
+class DriveFolder(DriveItem):
 
     def isfolder(self):
         return True  
     
     def _narrow_query(self, query, folders=True, files=True, trashed=False):
+        #maybe replace with real query builder
         if folders and not files:
             query += " and mimeType = 'application/vnd.google-apps.folder'"
         elif files and not folders:
@@ -118,6 +119,7 @@ class DriveFolder(DriveItem):
         return query
 
     def child(self, name, folders=True, files=True, trashed=False):
+        #TODO: Refactor to use item_by_query
         query = "'{this}' in parents and name='{name}'".format(this=self.id, name=name)
         if not folders and not files:
             raise FileNotFoundError(name)
@@ -359,6 +361,8 @@ class GoogleDrive(DriveFolder):
         self._service = None
         self.drive = self
         self.default_fields = 'id, name, mimeType, parents, spaces'
+        #self.caching = caching
+        #TODO: Add caching ability
 
     @property
     def service(self):
