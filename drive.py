@@ -1,5 +1,3 @@
-import pickle
-
 import os
 from abc import ABC, abstractmethod
 import json
@@ -149,7 +147,7 @@ class DriveFolder(DriveItem):
         try:
             file_ = self.child(name)
             if not file_.isfolder():
-                raise Exception("Filename already exists ({name}) and it's not a folder.".format(name=name))
+                raise FileExistsError("Filename already exists ({name}) and it's not a folder.".format(name=name))
             return file_
         except FileNotFoundError:
             #TODO: Don't use exception for flow control here. Maybe implement exists()
@@ -259,7 +257,7 @@ class DriveFile(DriveItem):
             'name': self.name, 
             'parents': self.parent_ids
         }
-        result = self.drive.service.files().create(body=file_metadata, fields=self.default_fields).execute()
+        result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
         self.id = result['id']
         self.name = result['name']
        
