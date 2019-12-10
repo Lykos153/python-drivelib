@@ -59,11 +59,12 @@ class DriveItem(ABC):
     # Filename not as attribute but as key
     # OR: filename as property method
 
-    def __init__(self, drive, parent_ids, name, id_):
+    def __init__(self, drive, parent_ids, name, id_, spaces):
         self.drive = drive
         self.name = name
         self.id = id_
         self.parent_ids = parent_ids
+        self.spaces = spaces
 
     @property
     def parent(self):
@@ -126,6 +127,7 @@ class DriveFolder(DriveItem):
 
         result = self.drive.service.files().list(
                 pageSize=1,
+                spaces=self.spaces,
                 fields="nextPageToken, files({})".format(self.drive.default_fields),
                 q=query
             ).execute()
@@ -141,7 +143,7 @@ class DriveFolder(DriveItem):
             return
         query = self._narrow_query(query, folders, files, trashed)
 
-        return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy)
+        return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces)
 
     def mkdir(self, name):
         try:
@@ -185,17 +187,17 @@ class DriveFolder(DriveItem):
         
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
-            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'])
+            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
         else:
-            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'])
+            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
 
 class DriveFile(DriveItem):  
 
     def isfolder(self):
         return False  
 
-    def __init__(self, drive, parent_ids, filename, file_id=None, resumable_uri=None):
-        super().__init__(drive, parent_ids, filename, file_id)
+    def __init__(self, drive, parent_ids, filename, file_id=None, spaces='drive', resumable_uri=None):
+        super().__init__(drive, parent_ids, filename, file_id, spaces)
         self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
@@ -358,7 +360,7 @@ class GoogleDrive(DriveFolder):
         self.id = None
         self._service = None
         self.drive = self
-        self.default_fields = 'id, name, mimeType, parents'
+        self.default_fields = 'id, name, mimeType, parents, spaces'
 
     @property
     def service(self):
@@ -377,9 +379,14 @@ class GoogleDrive(DriveFolder):
 
         self._service = build('drive', 'v3', credentials=self.creds)
         self.id = self.item_by_id("root").id
+        if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
+            self.appdata = self.item_by_id("appDataFolder")
+
         
-    def auth(self):
+    def auth(self, appdatafolder=False):
         SCOPES = ['https://www.googleapis.com/auth/drive']
+        if appdatafolder:
+            SCOPES += ['https://www.googleapis.com/auth/drive.appdata']
             
         if self.creds and self.creds.expired and self.creds.refresh_token:
             try:
@@ -393,16 +400,19 @@ class GoogleDrive(DriveFolder):
                 self.creds = flow.run_local_server()
             except OSError:
                 self.creds = flow.run_console()
+        if not self.creds.has_scopes(SCOPES):
+            raise NotAuthenticatedError("Could not get requested scopes")
         return self.json_creds()
 
     def json_creds(self):
         return Credentials.to_json(self.creds)
 
-    def items_by_query(self, query, pageSize=100, orderBy=None):
+    def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive'):
         result = {'nextPageToken': ''}
         while "nextPageToken" in result:
             result = self.service.files().list(
                     pageSize=pageSize,
+                    spaces=spaces,
                     fields="nextPageToken, files({})".format(self.default_fields),
                     q=query,
                     pageToken=result['nextPageToken'],
