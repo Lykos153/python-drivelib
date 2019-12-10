@@ -233,6 +233,10 @@ class DriveFile(DriveItem):
 
     def upload(self, local_file, chunksize=10*1024**2,
                 resumable_uri=None, progress_handler=None):
+        if os.path.getsize(local_file) == 0:
+            self.upload_empty()
+            return
+
         media = MediaFileUpload(local_file, resumable=True, chunksize=chunksize)
         file_metadata = {
             'name': self.name, 
