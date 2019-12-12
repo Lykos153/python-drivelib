@@ -378,6 +378,10 @@ class GoogleDrive(DriveFolder):
             self.creds.refresh(Request())
 
         self._service = build('drive', 'v3', credentials=self.creds)
+
+        self.id = None
+        self.drive = self
+        self.default_fields = 'id, name, mimeType, parents, spaces'
         root_folder = self.item_by_id("root")
 
         super().__init__(self, root_folder.parent_ids, root_folder.name, root_folder.id, root_folder.spaces)
@@ -385,7 +389,6 @@ class GoogleDrive(DriveFolder):
         if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
             self.appdata = self.item_by_id("appDataFolder")
         
-        self.default_fields = 'id, name, mimeType, parents, spaces'
         #self.caching = caching
         #TODO: Add caching ability
 
@@ -413,7 +416,7 @@ class GoogleDrive(DriveFolder):
                 yield self._reply_to_object(file_)
 
     def item_by_id(self, id_):
-        if id_ == self.id:
+        if hasattr(self, 'id') and id_ == self.id:
             return self
         result = self.service.files().get(
                                 fileId=id_,
