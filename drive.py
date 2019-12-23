@@ -53,6 +53,14 @@ class ResumableMediaUploadProgress(MediaUploadProgress):
         super().__init__(resumable_progress, total_size)
         self.resumable_uri = resumable_uri
 
+    def __str__(self):
+        return "{}/{} ({:.0%}%) {}".format(
+                                self.resumable_progress,
+                                self.total_size,
+                                self.progress(),
+                                self.resumable_uri
+                            )
+
 class DriveItem(ABC):
     #TODO: metadata as dict
     # Filename not as attribute but as key
