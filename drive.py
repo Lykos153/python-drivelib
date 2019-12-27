@@ -73,6 +73,9 @@ class DriveItem(ABC):
         self.parent_ids = parent_ids
         self.spaces = spaces
 
+    def __eq__(self, other):
+        return self.id == other.id
+
     @property
     def parent(self):
         if self.parent_ids:
