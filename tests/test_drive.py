@@ -43,11 +43,10 @@ def tmpfile(tmp_path) -> string:
 
 def random_string(size=6, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
-import os
 
-def create_random_file(filename, size_kb):
+def create_random_file(filename, size_bytes):
     with open(filename, 'wb') as fout:
-        fout.write(os.urandom(size_kb))
+        fout.write(os.urandom(size_bytes))
 
 class AbortTransfer(Exception):
     pass
@@ -56,10 +55,15 @@ class ProgressExtractor():
     def __init__(self, abort_at=.0):
         self.status = None
         self.abort_at = abort_at
+        self.chunks = 0
+        self.chunks_since_last_abort = 0
     
     def update_status(self, status: ResumableMediaUploadProgress):
         self.status = status
+        self.chunks += 1
+        self.chunks_since_last_abort += 1
         if self.status.progress() >= self.abort_at:
+            self.chunks_since_last_abort = 0
             raise AbortTransfer
 
 
@@ -76,7 +80,6 @@ class TestDriveFolder:
         assert isinstance(folder, (DriveFolder))
         assert folder.isfolder()
 
-    @pytest.mark.xfail
     def test_mkdir_exists_folder(self, remote_tmpdir: DriveFolder):
         foldername = random_string()
         folder1 = remote_tmpdir.mkdir(foldername)
@@ -89,17 +92,16 @@ class TestDriveFolder:
         with pytest.raises(FileExistsError):
             remote_tmpdir.mkdir(foldername)
 
-    @pytest.mark.xfail
     def test_child_all(self, remote_tmpdir: DriveFolder):
         foldername = random_string()
         folder = remote_tmpdir.mkdir(foldername)
         assert folder == remote_tmpdir.child(foldername)
 
         filename = random_string()
-        file_ = remote_tmpdir.new_file(filename).upload_empty()
+        file_ = remote_tmpdir.new_file(filename)
+        file_.upload_empty()
         assert file_ == remote_tmpdir.child(filename)
 
-    @pytest.mark.xfail
     def test_child_onlyfolders(self, remote_tmpdir: DriveFolder):
         foldername = random_string()
         folder = remote_tmpdir.mkdir(foldername)
@@ -110,7 +112,6 @@ class TestDriveFolder:
         with pytest.raises(FileNotFoundError):
             remote_tmpdir.child(filename, files=False)
 
-    @pytest.mark.xfail
     def test_child_onlyfiles(self, remote_tmpdir: DriveFolder):
         foldername = random_string()
         remote_tmpdir.mkdir(foldername)
@@ -118,18 +119,19 @@ class TestDriveFolder:
             remote_tmpdir.child(foldername, folders=False)
 
         filename = random_string()
-        file_ = remote_tmpdir.new_file(filename).upload_empty()
+        file_ = remote_tmpdir.new_file(filename)
+        file_.upload_empty()
         assert file_ == remote_tmpdir.child(filename, folders=False)
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_child_trashed(self, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_children(self, remote_tmp_subdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_children_ordered(self, remote_tmp_subdir: DriveFolder):
         raise NotImplementedError
 
@@ -142,44 +144,50 @@ class TestDriveFolder:
         with pytest.raises(FileNotFoundError):
             new_file.download(tmpfile)
 
-    @pytest.mark.xfail
     def test_child_from_path(self, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+        depth = 3
+        folder = [remote_tmpdir]
+        foldername = [""]
+        for i in range(1,depth+1):
+            foldername.append(random_string())
+            folder.append(folder[i-1].mkdir(foldername[i]))
+        path = "/".join(foldername)
+        assert remote_tmpdir.child_from_path(path) == folder[depth]
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_create_path(self, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_create_path_exists(self, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
 class TestDriveFile:
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_empty_file(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_continue(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_local_file_does_not_match(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_progress(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_chunksize_too_small(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_download_chunksize_bigger_than_filesize(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
  
@@ -193,30 +201,25 @@ class TestDriveFile:
         new_file = remote_tmpdir.new_file(os.path.basename(tmpfile))
         new_file.upload(tmpfile)
 
-    def test_upload_progress(self, tmpfile: string, remote_tmpdir: DriveFolder):
+    def test_upload_progress_resume(self, tmpfile: string, remote_tmpdir: DriveFolder):
         chunksize = 1024**2
-        create_random_file(tmpfile, int(chunksize*2/1024))
+        create_random_file(tmpfile, int(chunksize*2))
         new_file = remote_tmpdir.new_file(os.path.basename(tmpfile))
         progress = ProgressExtractor(abort_at=0.0)
         with pytest.raises(AbortTransfer):
             new_file.upload(tmpfile, chunksize=chunksize, progress_handler=progress.update_status)
         assert progress.status.resumable_progress == chunksize
+        # TODO: resume
 
-
-
-    @pytest.mark.xfail
-    def test_upload_continue(self, tmpfile: string, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
-
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_upload_remote_file_does_not_match(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_upload_chunksize_too_small(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
-    @pytest.mark.xfail
+    @pytest.mark.skip
     def test_upload_chunksize_bigger_than_filesize(self, tmpfile: string, remote_tmpdir: DriveFolder):
         raise NotImplementedError
 
