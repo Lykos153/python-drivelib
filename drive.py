@@ -23,6 +23,9 @@ from google.auth.exceptions import RefreshError
 class NotAuthenticatedError(Exception):
     pass
 
+class CheckSumError(Exception):
+    pass
+
 class Credentials(google.oauth2.credentials.Credentials,
                 oauth2client.client.Credentials):
     @classmethod
@@ -356,7 +359,7 @@ class ResumableUploadRequest:
                 self._range_md5.update(self.media_body.getbytes(0, self.resumable_progress))
             self._range_md5.update(content)
             if status['x-range-md5'] != self._range_md5.hexdigest():
-                raise Exception("Checksum mismatch. Need to repeat upload.")
+                raise CheckSumError("Checksum mismatch. Need to repeat upload.")
             self.resumable_progress += content_length
         elif status['status'] == '200':
             self.resumable_progress = self.media_body.size()
