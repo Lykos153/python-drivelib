@@ -114,6 +114,19 @@ class DriveItem(ABC):
         self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
 
+    def meta_set(self, metadata: dict):
+        result = self.drive.service.files().update(
+                                fileId=self.id,
+                                body=metadata,
+                                fields=','.join(metadata.keys()),
+                                ).execute()
+        print (result)
+        if metadata != result:
+            raise Exception("Could not change all fields")
+
+    def meta_get(self, fields: str) -> dict:
+        return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
+
     def refresh(self):
         result = self.drive.service.files().get(
                                 fileId=self.id,
