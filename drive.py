@@ -331,6 +331,12 @@ class DriveFile(DriveItem):
         if not hasattr(self, "_md5sum"):
             self._md5_sum = self.meta_get("md5Checksum")["md5Checksum"]
         return self._md5_sum
+       
+    @property
+    def size(self):
+        if not hasattr(self, "_size"):
+            self._size = int(self.meta_get("size")["size"])
+        return self._size
 
 
 class ResumableUploadRequest:
