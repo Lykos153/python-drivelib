@@ -26,9 +26,6 @@ class NotAuthenticatedError(Exception):
 class CheckSumError(Exception):
     pass
 
-class HttpError(Exception):
-    pass
-
 class AmbiguousPathError(Exception):
     pass
 
