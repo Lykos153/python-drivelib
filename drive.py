@@ -85,6 +85,10 @@ class DriveItem(ABC):
     def __eq__(self, other):
         return self.id == other.id
 
+    def __hash__(self):
+        # not yet sure if this is a good idea
+        return hash(self.id)
+
     @property
     def parent(self):
         if self.parent_ids:
