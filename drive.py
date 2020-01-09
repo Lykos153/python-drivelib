@@ -245,6 +245,9 @@ class DriveFile(DriveItem):
         self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
+        if not self.id:
+            raise FileNotFoundError
+
         range_md5 = hashlib.md5()
         try:
             local_file_size = os.path.getsize(local_file)
