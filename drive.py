@@ -245,11 +245,16 @@ class DriveFile(DriveItem):
         self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
+        range_md5 = hashlib.md5()
         try:
             local_file_size = os.path.getsize(local_file)
+            with open(local_file, "rb") as f:
+                for chunk in iter(lambda: f.read(chunksize), b""):
+                    range_md5.update(chunk)
         except FileNotFoundError:
             local_file_size = 0
         
+
         remote_file_size = int(self.drive.service.files().\
                             get(fileId=self.id, fields="size").\
                             execute()['size'])
@@ -270,10 +275,14 @@ class DriveFile(DriveItem):
                 if resp.status == 206:
                         fh.write(content)
                         local_file_size+=int(resp['content-length'])
+                        range_md5.update(content)
                         if progress_handler:
                             progress_handler(MediaDownloadProgress(local_file_size, remote_file_size))
                 else:
                     raise HttpError(resp, content)
+        if range_md5.hexdigest() != self.md5sum:
+            os.remove(local_file)
+            raise CheckSumError("Checksum mismatch. Need to repeat download.")
 
     def upload(self, local_file, chunksize=10*1024**2,
                 resumable_uri=None, progress_handler=None):
@@ -391,7 +400,15 @@ class ResumableUploadRequest:
         if status['status'] in ('200', '308'):
             if not self._range_md5:
                 self._range_md5 = hashlib.md5()
-                self._range_md5.update(self.media_body.getbytes(0, self.resumable_progress))
+                def file_in_chunks():
+                    start_byte = 0
+                    while start_byte < self.resumable_progress:
+                        content_length = min(self.media_body.chunksize(), self.resumable_progress-start_byte)
+                        print(start_byte, start_byte+content_length)
+                        yield self.media_body.getbytes(start_byte, content_length)
+                        start_byte += content_length
+                for chunk in file_in_chunks():
+                    self._range_md5.update(chunk)
             self._range_md5.update(content)
             if status['status'] == '308':
                 if status['x-range-md5'] != self._range_md5.hexdigest():
