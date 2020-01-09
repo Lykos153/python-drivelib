@@ -118,7 +118,7 @@ class DriveItem(ABC):
         try:
             self.meta_set({'trashed': True})
         except:
-            raise Exception("Could not trash file")
+            raise HttpError("Could not trash file")
 
     def meta_set(self, metadata: dict):
         result = self.drive.service.files().update(
@@ -126,9 +126,6 @@ class DriveItem(ABC):
                                 body=metadata,
                                 fields=','.join(metadata.keys()),
                                 ).execute()
-        print (result)
-        if metadata != result:
-            raise Exception("Could not change all fields")
 
     def meta_get(self, fields: str) -> dict:
         return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
