@@ -114,6 +114,12 @@ class DriveItem(ABC):
         self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
 
+    def trash(self):
+        try:
+            self.meta_set({'trashed': True})
+        except:
+            raise Exception("Could not trash file")
+
     def meta_set(self, metadata: dict):
         result = self.drive.service.files().update(
                                 fileId=self.id,
@@ -311,7 +317,11 @@ class DriveFile(DriveItem):
         self.id = result['id']
         self.name = result['name']
        
-
+    @property
+    def md5sum(self):
+        if not hasattr(self, "_md5sum"):
+            self._md5_sum = self.meta_get("md5Checksum")["md5Checksum"]
+        return self._md5_sum
 
 
 class ResumableUploadRequest:
