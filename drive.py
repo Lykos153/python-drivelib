@@ -26,6 +26,12 @@ class NotAuthenticatedError(Exception):
 class CheckSumError(Exception):
     pass
 
+class HttpError(Exception):
+    pass
+
+class AmbiguousPathError(Exception):
+    pass
+
 class Credentials(google.oauth2.credentials.Credentials,
                 oauth2client.client.Credentials):
     @classmethod
@@ -147,7 +153,7 @@ class DriveFolder(DriveItem):
                 q=query
             ).execute()
         if "nextPageToken" in result:
-            raise Exception("Two or more files {name}".format(name=name))
+            raise AmbiguousPathError("Two or more files {name}".format(name=name))
         if not result['files']:
             raise FileNotFoundError(name)
         return self._reply_to_object(result["files"][0])
@@ -248,6 +254,8 @@ class DriveFile(DriveItem):
 
     def upload(self, local_file, chunksize=10*1024**2,
                 resumable_uri=None, progress_handler=None):
+        if self.id:
+            raise FileExistsError("Uploading new revision not yet implemented")
         if os.path.getsize(local_file) == 0:
             self.upload_empty()
             return
@@ -265,7 +273,11 @@ class DriveFile(DriveItem):
             
         response = None
         while not response:
-            status, response = request.next_chunk()
+            try:
+                status, response = request.next_chunk()
+            except CheckSumError:
+                self.resumable_uri = None
+                raise
             self.resumable_uri = request.resumable_uri
             if status and progress_handler:
                 progress_handler(status)
@@ -315,7 +327,7 @@ class ResumableUploadRequest:
             api_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" 
             status, resp = self.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
             if status['status'] != '200':
-                raise Exception(status)
+                raise HttpError(status, resp)
             self._resumable_uri = status['location']
         return self._resumable_uri
         
@@ -331,7 +343,7 @@ class ResumableUploadRequest:
             status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
             
             if status['status'] not in ('200', '308'):
-                raise Exception(status)
+                raise HttpError(status, resp)
 
             if status['status'] == '200':
                 self._resumable_progress = self.media_body.size()
@@ -351,19 +363,23 @@ class ResumableUploadRequest:
         upload_range = "bytes {}-{}/{}".format(self.resumable_progress, self.resumable_progress+content_length-1, self.media_body.size()) 
         content = self.media_body.getbytes(self.resumable_progress, content_length)
         status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
-        if status['status'] not in ('200', '308'):
-            raise Exception(status)
-        if status['status'] == '308':
+        if status['status'] in ('200', '308'):
             if not self._range_md5:
                 self._range_md5 = hashlib.md5()
                 self._range_md5.update(self.media_body.getbytes(0, self.resumable_progress))
             self._range_md5.update(content)
-            if status['x-range-md5'] != self._range_md5.hexdigest():
-                raise CheckSumError("Checksum mismatch. Need to repeat upload.")
-            self.resumable_progress += content_length
-        elif status['status'] == '200':
-            self.resumable_progress = self.media_body.size()
-            # TODO: md5sum check for last chunk
+            if status['status'] == '308':
+                if status['x-range-md5'] != self._range_md5.hexdigest():
+                    raise CheckSumError("Checksum mismatch. Need to repeat upload.")
+                self.resumable_progress += content_length
+            elif status['status'] == '200':
+                self.resumable_progress = self.media_body.size()
+                result = json.loads(resp)
+                remote_md5 = self.service.files().get(fileId=result['id'], fields="md5Checksum").execute()['md5Checksum']
+                if remote_md5 != self._range_md5.hexdigest():
+                    raise CheckSumError("Checksum mismatch. Need to repeat upload.")
+        else:
+            raise HttpError(status, resp)
             
         return ResumableMediaUploadProgress(self.resumable_progress, self.media_body.size(), self.resumable_uri), resp
 
