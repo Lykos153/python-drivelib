@@ -321,9 +321,7 @@ class ResumableUploadRequest:
     
     @upload_id.setter
     def upload_id(self, upload_id):
-        self._upload_id=upload_id
-        if self._upload_id:
-            self._resumable_uri = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id={}".format(upload_id)
+        self._resumable_uri = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id={}".format(upload_id)
         
     @property
     def resumable_uri(self):
