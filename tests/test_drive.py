@@ -3,18 +3,21 @@ import string
 import random
 import os
 from pathlib import Path
-from hashlib import sha512 as hash
+from hashlib import md5
 
 from drive import GoogleDrive
 from drive import DriveFile
 from drive import DriveFolder
 from drive import ResumableMediaUploadProgress
+
 from drive import CheckSumError
+from drive import HttpError
 
 
 token_file = "tests/token.json"
 token_file_appdata = "tests/token_appdata.json"
 remote_tmpdir_prefix = "testremote"
+chunksize_min = 1024*256
 
 @pytest.fixture(scope="module")
 def gdrive() -> GoogleDrive:
@@ -29,20 +32,33 @@ def gdrive_appdata() -> GoogleDrive:
     return GoogleDrive(credentials)
 
 @pytest.fixture(scope="module")
-def remote_tmpdir(gdrive) -> DriveFolder:
+def remote_tmpdir(gdrive: GoogleDrive) -> DriveFolder:
     tmpdir = gdrive.create_path(remote_tmpdir_prefix)
     yield tmpdir
     tmpdir.remove()
 
 @pytest.fixture(scope="function")
-def remote_tmp_subdir(remote_tmpdir) -> DriveFolder:
+def remote_tmp_subdir(remote_tmpdir: DriveFolder) -> DriveFolder:
     subdir = remote_tmpdir.mkdir(random_string())
     yield subdir
     subdir.remove()
 
 @pytest.fixture(scope="function")
+def remote_tmpfile(remote_tmpdir: DriveFolder, tmpfile) -> callable:
+    def _make_remote_tmpfile(size_bytes=0, filename=None, subdir=None):
+        if filename is None:
+            filename = random_string()
+        local_file = tmpfile(size_bytes=size_bytes)
+        if not subdir:
+            subdir = remote_tmpdir
+        remote_file = subdir.new_file(filename)
+        remote_file.upload(str(local_file))
+        return remote_file
+    return _make_remote_tmpfile
+
+@pytest.fixture(scope="function")
 def tmpfile(tmp_path) -> string:
-    def _make_tmpfile(filename=None, size_bytes=None):
+    def _make_tmpfile(size_bytes=None, filename=None):
         if filename == None:
             filename = random_string()
         file_path = tmp_path / filename
@@ -55,11 +71,12 @@ def tmpfile(tmp_path) -> string:
 def random_string(size=6, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
-def hash_file(file_path: Path):
-    h = hash()
-    with file_path.open('br') as fh:
-        h.update(fh.read())
-    return h.digest()
+def md5_file(fname):
+    hash_md5 = md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 class AbortTransfer(Exception):
     pass
@@ -143,20 +160,38 @@ class TestDriveFolder:
         file_.upload_empty()
         assert file_ == remote_tmpdir.child(filename, folders=False)
 
-    @pytest.mark.skip
-    def test_child_trashed(self, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+    def test_child_trashed(self, remote_tmp_subdir: DriveFolder):
+        remote_file = remote_tmp_subdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_file.trash()
+        with pytest.raises(FileNotFoundError):
+            remote_tmp_subdir.child(remote_file.name)
+        remote_file2 = remote_tmp_subdir.child(remote_file.name, trashed=True) 
+        assert remote_file == remote_file2
 
-    @pytest.mark.skip
-    def test_children(self, remote_tmp_subdir: DriveFolder):
-        raise NotImplementedError
 
-    @pytest.mark.skip
-    def test_children_ordered(self, remote_tmp_subdir: DriveFolder):
-        raise NotImplementedError
+    def test_children(self, remote_tmp_subdir: DriveFolder, remote_tmpfile):
+        file_count = 5
+        created_files = set()
+        for _ in range(0,file_count):
+            created_files.add(remote_tmpfile(subdir=remote_tmp_subdir))
 
-    @pytest.mark.xfail
-    def test_new_file(self, tmpfile: callable, remote_tmpdir: DriveFolder):
+        listed_files = set(remote_tmp_subdir.children())
+
+        assert created_files == listed_files
+
+    def test_children_ordered(self, remote_tmp_subdir: DriveFolder, remote_tmpfile):
+        file_count = 5
+        created_files = []
+        for _ in range(0,file_count):
+            created_files.append(remote_tmpfile(subdir=remote_tmp_subdir))
+        created_files.sort(key=lambda x: x.name)
+
+        listed_files = list(remote_tmp_subdir.children(orderBy="name"))
+
+        assert created_files == listed_files
+
+    def test_new_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         new_file = remote_tmpdir.new_file(random_string())
         assert isinstance(new_file, (DriveFile))
         assert new_file.isfolder() == False
@@ -184,101 +219,149 @@ class TestDriveFolder:
         assert folder1 == folder2
 
 class TestDriveFile:
-    @pytest.mark.skip
-    def test_download(self, tmpfile: callable, remote_tmpdir: DriveFolder):
+    def test_download(self, tmpfile: Path, remote_tmpfile):
         # depends on test_upload
-        local_file1 = tmpfile(size_bytes = 1024)
-        remote_file = remote_tmpdir.new_file(local_file1.parent)
-        remote_file.upload(str(local_file1))
-        local_file2 = tmpfile()
-        remote_file.download(str(local_file2))
-        assert hash_file(local_file1) == hash_file(local_file2)
-
-    def test_download_empty_file(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        # depends on test_upload_empty_file
+        remote_file = remote_tmpfile(size_bytes=1024)
         local_file = tmpfile()
-        file_ = remote_tmpdir.new_file("test")
-        file_.upload_empty()
-        file_.download(local_file)
+        remote_file.download(str(local_file))
+        assert md5_file(local_file) == remote_file.md5sum
+
+    def test_download_empty_file(self, tmpfile: Path, remote_tmpfile):
+        # depends on test_upload_empty_file
+        remote_file = remote_tmpfile(size_bytes=0)
+        local_file = tmpfile()
+        remote_file.download(local_file)
         assert local_file.stat().st_size == 0
 
-    @pytest.mark.skip
-    def test_download_continue(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+    def test_download_resume(self, tmpfile: Path, remote_tmpfile: DriveFile):
+        chunksize = chunksize_min
+        remote_file = remote_tmpfile(size_bytes=chunksize*2)
+        local_file = tmpfile(filename=remote_file.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.download(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == chunksize
+        progress.abort_at = 1
+        remote_file.download(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.chunks_since_last_abort == 1
 
-    @pytest.mark.skip
-    def test_download_local_file_does_not_match(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+    def test_download_local_file_does_not_match(self, tmpfile: Path, remote_tmpfile: DriveFile):
+        chunksize = chunksize_min
+        remote_file = remote_tmpfile(size_bytes=chunksize*2)
+        local_file = tmpfile(filename=remote_file.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.download(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == chunksize
+        local_file2 = tmpfile(size_bytes=chunksize)
+        with pytest.raises(CheckSumError):
+            remote_file.download(str(local_file2))
 
-    @pytest.mark.skip
-    def test_download_progress(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+    def test_download_chunksize_bigger_than_filesize(self, tmpfile: Path, remote_tmpfile: DriveFile):
+        chunksize = chunksize_min
+        remote_file = remote_tmpfile(size_bytes=int(chunksize/2))
+        local_file = tmpfile()
+        remote_file.download(str(local_file), chunksize=chunksize)
+        assert md5_file(local_file) == remote_file.md5sum
 
-    @pytest.mark.skip
-    def test_download_chunksize_too_small(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
-
-    @pytest.mark.skip
-    def test_download_chunksize_bigger_than_filesize(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
- 
-    def test_upload(self, tmpfile: callable, remote_tmpdir: DriveFolder):
+    def test_upload(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         local_file = tmpfile(size_bytes = 1024)
         remote_file = remote_tmpdir.new_file(str(local_file.parent))
         remote_file.upload(str(local_file))
+        assert md5_file(local_file) == remote_file.md5sum
 
-    def test_upload_empty_file(self, tmpfile: callable, remote_tmpdir: DriveFolder):
+    def test_upload_empty_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         local_file = tmpfile(size_bytes = 0)
         remote_file = remote_tmpdir.new_file(str(local_file.parent))
         remote_file.upload(str(local_file))
+        assert md5_file(local_file) == remote_file.md5sum
 
-    def test_upload_nonexistent(self, tmpfile: callable, remote_tmpdir):
+    def test_upload_nonexistent(self, tmpfile: Path, remote_tmpdir):
         local_file = tmpfile(size_bytes = None)
         remote_file = remote_tmpdir.new_file(str(local_file.parent))
         with pytest.raises(FileNotFoundError):
             remote_file.upload(str(local_file))
 
-    def test_upload_progress_resume(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        chunksize = 1024**2
+    def test_upload_progress_resume(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = chunksize_min
+        local_file = tmpfile(size_bytes=chunksize*5)
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        progress = ProgressExtractor(abort_at=0.4)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == 2*chunksize
+        progress.abort_at = 1
+        remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.chunks_since_last_abort == 3
+
+    def test_upload_remote_file_does_not_match(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = chunksize_min
+        local_file_orig = tmpfile(size_bytes=chunksize*3)
+        local_file_same_size = tmpfile(size_bytes=chunksize*3)
+        local_file_different_size = tmpfile(size_bytes=chunksize*5)
+
+        ## Test size mismatch
+        remote_file = remote_tmpdir.new_file(local_file_orig.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file_orig), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == chunksize
+
+        with pytest.raises(HttpError):
+            remote_file.upload(str(local_file_different_size), chunksize=chunksize)
+
+        ## Test checksum mismatch on intermediate chunk
+        remote_file = remote_tmpdir.new_file(local_file_orig.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file_orig), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == chunksize
+
+        with pytest.raises(CheckSumError):
+            remote_file.upload(str(local_file_same_size), chunksize=chunksize)
+        assert remote_file.resumable_uri == None
+
+        ## Test checksum mismatch on last chunk
+        remote_file = remote_tmpdir.new_file(local_file_orig.name)
+        progress = ProgressExtractor(abort_at=0.6)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file_orig), chunksize=chunksize, progress_handler=progress.update_status)
+        assert progress.status.resumable_progress == 2*chunksize
+
+        with pytest.raises(CheckSumError):
+            remote_file.upload(str(local_file_same_size), chunksize=chunksize)
+        assert remote_file.resumable_uri == None
+        
+    def test_upload_chunksize_too_small(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = 1
+        local_file = tmpfile(size_bytes=chunksize*2)
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        with pytest.raises(HttpError):
+            remote_file.upload(str(local_file), chunksize=chunksize)
+
+    def test_upload_chunksize_bigger_than_filesize(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = 100
+        local_file = tmpfile(size_bytes=int(chunksize/2))
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        remote_file.upload(str(local_file), chunksize=chunksize)
+        assert md5_file(local_file) == remote_file.md5sum
+
+    def test_upload_invalid_resumable_uri(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = chunksize_min
         local_file = tmpfile(size_bytes=chunksize*2)
         remote_file = remote_tmpdir.new_file(local_file.name)
         progress = ProgressExtractor(abort_at=0.0)
         with pytest.raises(AbortTransfer):
             remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
         assert progress.status.resumable_progress == chunksize
-        progress.abort_at = 1
-        remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
-        assert progress.chunks_since_last_abort == 1
+        remote_file.resumable_uri = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=invalid_id"
+        with pytest.raises(HttpError):
+            remote_file.upload(str(local_file))
 
-
-    def test_upload_remote_file_does_not_match(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        chunksize = 1024**2
-        local_file1 = tmpfile(size_bytes=chunksize*5)
-        remote_file = remote_tmpdir.new_file(local_file1.name)
-        progress = ProgressExtractor(abort_at=0.0)
-        with pytest.raises(AbortTransfer):
-            remote_file.upload(str(local_file1), chunksize=chunksize, progress_handler=progress.update_status)
-        assert progress.status.resumable_progress == chunksize
-
-        # test checksum during upload
-        local_file3 = tmpfile(size_bytes=chunksize*5)
-        progress.abort_at = 1
-        with pytest.raises(CheckSumError):
-            remote_file.upload(str(local_file3), chunksize=chunksize, progress_handler=progress.update_status)
-
-        # test checksum for finished file
-        local_file2 = tmpfile(size_bytes=chunksize*3)
-        progress.abort_at = 0.5
-        with pytest.raises(CheckSumError):
-            remote_file.upload(str(local_file2), chunksize=chunksize, progress_handler=progress.update_status)
-
-
-    @pytest.mark.skip
-    def test_upload_chunksize_too_small(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
-
-    @pytest.mark.skip
-    def test_upload_chunksize_bigger_than_filesize(self, tmpfile: callable, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
-
- 
+    def test_upload_existing_file(self, tmpfile: Path, remote_tmpfile: DriveFile):
+        local_file = tmpfile(size_bytes=1024)
+        remote_file = remote_tmpfile(size_bytes=1024)
+        id_pre_upload = remote_file.id
+        with pytest.raises(FileExistsError):
+            remote_file.upload(str(local_file))
+        assert remote_file.id == id_pre_upload
