@@ -365,3 +365,55 @@ class TestDriveFile:
         with pytest.raises(FileExistsError):
             remote_file.upload(str(local_file))
         assert remote_file.id == id_pre_upload
+
+class TestMetadata:
+    def test_get_metadata(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        metadata = remote_file.meta_get("size, starred, trashed")
+        assert metadata == {'size': '700', 'starred': False, 'trashed': False}
+
+    def test_set_metadata(self, remote_tmpfile: DriveFile):
+        metadata = {'description': "an interesting file",
+                                'starred': True}
+        remote_file = remote_tmpfile()
+        remote_file.meta_set(metadata)
+        assert remote_file.meta_get("description, starred") == metadata
+
+    def test_get_nonexistent_metadata(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        with pytest.raises(HttpError):
+            metadata = remote_file.meta_get("doesnotexist")
+
+    def test_set_nonexistent_metadata(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        with pytest.raises(HttpError):
+            metadata = remote_file.meta_set({"doesnotexist": True})
+
+    def test_set_immutable_metadata(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        with pytest.raises(HttpError):
+            metadata = remote_file.meta_set({"version": 7})
+
+    def test_custom_properties(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile()
+
+        metadata = {'properties': {'prop1': random_string()}}
+        remote_file.meta_set(metadata)
+        assert remote_file.meta_get("properties") == metadata
+
+        # add property
+        metadata2 = {'properties': {'prop2': random_string()}}
+        remote_file.meta_set(metadata2)
+        metadata['properties'].update(metadata2['properties'])
+        assert remote_file.meta_get("properties") == metadata
+
+        # update prop1, delete prop2
+        metadata['properties'] = {'prop1': random_string(),
+                                  'prop2': None}
+        remote_file.meta_set(metadata)
+        del metadata['properties']['prop2']
+        assert remote_file.meta_get("properties") == metadata
+
+    def test_size(self, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        assert remote_file.size == 700
