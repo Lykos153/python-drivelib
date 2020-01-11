@@ -18,6 +18,19 @@ from googleapiclient.http import MediaDownloadProgress
 
 from google.auth.exceptions import RefreshError
 
+# Ideas: Make this lib more Path-like
+# Multple parents could be modeled as inode number
+# Only problem: Different files can have the same names
+# Possible solution 1: all operations on files return generators or lists
+# Possible solution 2: using __new__ method, lib will either return
+#   DriveItem (if there is only one instance) or 
+#   DriveItemList (if there are multiples)
+# Possible solution 3: Don't allow this and raise Exception in these cases
+#       
+
+
+
+
 #TODO: Proper Exceptions
 
 class NotAuthenticatedError(Exception):
@@ -157,7 +170,7 @@ class DriveFolder(DriveItem):
         return query
 
     def child(self, name, folders=True, files=True, trashed=False):
-        #TODO: Refactor to use item_by_query
+        #TODO: Refactor to use item_by_query or children
         query = "'{this}' in parents and name='{name}'".format(this=self.id, name=name)
         if not folders and not files:
             raise FileNotFoundError(name)
@@ -176,6 +189,7 @@ class DriveFolder(DriveItem):
         return self._reply_to_object(result["files"][0])
         
     def children(self, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):
+        #TODO: Add "name" argument
         query = "'{this}' in parents".format(this=self.id)
         if not folders and not files:
             return
@@ -203,9 +217,11 @@ class DriveFolder(DriveItem):
         return DriveFile(self.drive, [self.id], filename)
         
     def child_from_path(self, path):
+        #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
         child = self.child(splitpath[0])
         if child.name != splitpath[0]:
+            # Handle Google Drive automaticly renaming files on creation
             raise Exception("Could not access {}".format(splitpath[0]))
         if len (splitpath) == 1:
             return child
@@ -213,9 +229,11 @@ class DriveFolder(DriveItem):
             return child.child_from_path(splitpath[1])
 
     def create_path(self, path):
+        #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
         child = self.mkdir(splitpath[0])
         if child.name != splitpath[0]:
+            # Handle Google Drive automaticly renaming files on creation
             child.remove()
             raise Exception("Failed to create {}".format(splitpath[0]))
         if len (splitpath) == 1:
@@ -239,6 +257,7 @@ class DriveFile(DriveItem):
         self.resumable_uri = resumable_uri
         
     def download(self, local_file, chunksize=10**7, progress_handler=None):
+        #TODO: Accept Path objects for local_file
         if not self.id:
             raise FileNotFoundError
 
@@ -283,6 +302,7 @@ class DriveFile(DriveItem):
 
     def upload(self, local_file, chunksize=10*1024**2,
                 resumable_uri=None, progress_handler=None):
+        #TODO: Accept Path objects for local_file
         if self.id:
             raise FileExistsError("Uploading new revision not yet implemented")
         if os.path.getsize(local_file) == 0:
