@@ -139,37 +139,6 @@ class TestDriveFolder:
         file_.upload_empty()
         assert file_ == remote_tmpdir.child(filename)
 
-    def test_child_onlyfolders(self, remote_tmpdir: DriveFolder):
-        foldername = random_string()
-        folder = remote_tmpdir.mkdir(foldername)
-        assert folder == remote_tmpdir.child(foldername, files=False)
-
-        filename = random_string()
-        remote_tmpdir.new_file(filename).upload_empty()
-        with pytest.raises(FileNotFoundError):
-            remote_tmpdir.child(filename, files=False)
-
-    def test_child_onlyfiles(self, remote_tmpdir: DriveFolder):
-        foldername = random_string()
-        remote_tmpdir.mkdir(foldername)
-        with pytest.raises(FileNotFoundError):
-            remote_tmpdir.child(foldername, folders=False)
-
-        filename = random_string()
-        file_ = remote_tmpdir.new_file(filename)
-        file_.upload_empty()
-        assert file_ == remote_tmpdir.child(filename, folders=False)
-
-    def test_child_trashed(self, remote_tmp_subdir: DriveFolder):
-        remote_file = remote_tmp_subdir.new_file(random_string())
-        remote_file.upload_empty()
-        remote_file.trash()
-        with pytest.raises(FileNotFoundError):
-            remote_tmp_subdir.child(remote_file.name)
-        remote_file2 = remote_tmp_subdir.child(remote_file.name, trashed=True) 
-        assert remote_file == remote_file2
-
-
     def test_children(self, remote_tmp_subdir: DriveFolder, remote_tmpfile):
         file_count = 5
         created_files = set()
@@ -179,6 +148,32 @@ class TestDriveFolder:
         listed_files = set(remote_tmp_subdir.children())
 
         assert created_files == listed_files
+
+    def test_children_onlyfolders(self, remote_tmpdir: DriveFolder):
+        remote_folder = remote_tmpdir.mkdir(random_string())
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+
+        filelist = list(remote_tmpdir.children(files=False))
+        assert remote_folder in filelist
+        assert remote_file not in filelist
+
+    def test_children_onlyfiles(self, remote_tmpdir: DriveFolder):
+        remote_folder = remote_tmpdir.mkdir(random_string())
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+
+        filelist = list(remote_tmpdir.children(folders=False))
+        assert remote_folder not in filelist
+        assert remote_file in filelist
+
+    def test_children_trashed(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_file.trash()
+
+        assert remote_file not in remote_tmpdir.children()
+        assert remote_file in remote_tmpdir.children(trashed=True)
 
     def test_children_ordered(self, remote_tmp_subdir: DriveFolder, remote_tmpfile):
         file_count = 5
