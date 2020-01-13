@@ -27,6 +27,7 @@ from google.auth.exceptions import RefreshError
 #   DriveItemList (if there are multiples)
 # Possible solution 3: Don't allow this and raise Exception in these cases
 #       
+# Another problem: Drive allows / in Filenames and . and .. as filenames.
 
 
 minimalChunksize = 1024*256
@@ -210,10 +211,16 @@ class DriveFolder(DriveItem):
     def child_from_path(self, path):
         #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
-        child = self.child(splitpath[0])
-        if child.name != splitpath[0]:
-            # Handle Google Drive automaticly renaming files on creation
-            raise Exception("Could not access {}".format(splitpath[0]))
+
+        if splitpath[0] == ".":
+            child = self
+        elif splitpath[0] == "..":
+            child = self.parent
+        else:
+            child = self.child(splitpath[0])
+            if child.name != splitpath[0]:
+                # Handle Google Drive automaticly renaming files on creation
+                raise Exception("Could not access {}".format(splitpath[0]))
         if len (splitpath) == 1:
             return child
         else:
@@ -222,11 +229,17 @@ class DriveFolder(DriveItem):
     def create_path(self, path):
         #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
-        child = self.mkdir(splitpath[0])
-        if child.name != splitpath[0]:
-            # Handle Google Drive automaticly renaming files on creation
-            child.remove()
-            raise Exception("Failed to create {}".format(splitpath[0]))
+
+        if splitpath[0] == ".":
+            child = self
+        elif splitpath[0] == "..":
+            child = self.parent
+        else:
+            child = self.mkdir(splitpath[0])
+            if child.name != splitpath[0]:
+                # Handle Google Drive automaticly renaming files on creation
+                child.remove()
+                raise Exception("Failed to create {}".format(splitpath[0]))
         if len (splitpath) == 1:
             return child
         else:

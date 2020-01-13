@@ -204,6 +204,11 @@ class TestDriveFolder:
         path = "/".join(foldername)
         assert remote_tmpdir.child_from_path(path) == folder[depth]
 
+        # test . and ..
+        assert remote_tmpdir.child_from_path(".") == remote_tmpdir
+        path = "/".join((".", foldername[1], foldername[2], ".."))
+        assert remote_tmpdir.child_from_path(path) == folder[1]
+
     def test_create_path(self, remote_tmpdir: DriveFolder):
         # depends on test_child_from_path
         depth = 3
@@ -212,6 +217,11 @@ class TestDriveFolder:
         assert folder1 == remote_tmpdir.child_from_path(path)
         folder2 = remote_tmpdir.create_path(path)
         assert folder1 == folder2
+
+        # test . and ..
+        assert remote_tmpdir.create_path(".") == remote_tmpdir
+        folder = remote_tmpdir.create_path("./1/2a/../2b/")
+        assert folder == remote_tmpdir.child_from_path("1/2b")
 
 class TestDriveFile:
     def test_download(self, tmpfile: Path, remote_tmpfile):
