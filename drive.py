@@ -29,7 +29,8 @@ from google.auth.exceptions import RefreshError
 #       
 
 
-
+minimalChunksize = 1024*256
+defaultChunksize = minimalChunksize*4
 
 #TODO: Proper Exceptions
 
@@ -246,7 +247,9 @@ class DriveFile(DriveItem):
         super().__init__(drive, parent_ids, filename, file_id, spaces)
         self.resumable_uri = resumable_uri
         
-    def download(self, local_file, chunksize=10**7, progress_handler=None):
+    def download(self, local_file, chunksize=None, progress_handler=None):
+        if not chunksize:
+            chunksize = defaultChunksize
         #TODO: Accept Path objects for local_file
         if not self.id:
             raise FileNotFoundError
@@ -290,8 +293,10 @@ class DriveFile(DriveItem):
             os.remove(local_file)
             raise CheckSumError("Checksum mismatch. Need to repeat download.")
 
-    def upload(self, local_file, chunksize=10*1024**2,
+    def upload(self, local_file, chunksize=None,
                 resumable_uri=None, progress_handler=None):
+        if not chunksize:
+            chunksize = defaultChunksize
         #TODO: Accept Path objects for local_file
         if self.id:
             raise FileExistsError("Uploading new revision not yet implemented")

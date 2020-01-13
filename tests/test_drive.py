@@ -217,8 +217,15 @@ class TestDriveFile:
     def test_download(self, tmpfile: Path, remote_tmpfile):
         # depends on test_upload
         remote_file = remote_tmpfile(size_bytes=1024)
+
+        # No chunksize specified
         local_file = tmpfile()
         remote_file.download(str(local_file))
+        assert md5_file(local_file) == remote_file.md5sum
+
+        # Chunksize = None
+        local_file = tmpfile()
+        remote_file.download(str(local_file), chunksize=None)
         assert md5_file(local_file) == remote_file.md5sum
 
     def test_download_empty_file(self, tmpfile: Path, remote_tmpfile):
@@ -261,8 +268,15 @@ class TestDriveFile:
 
     def test_upload(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         local_file = tmpfile(size_bytes = 1024)
+        
+        # No chunksize specified
         remote_file = remote_tmpdir.new_file(str(local_file.parent))
         remote_file.upload(str(local_file))
+        assert md5_file(local_file) == remote_file.md5sum
+
+        # Chunksize = None
+        remote_file = remote_tmpdir.new_file(str(local_file.parent))
+        remote_file.upload(str(local_file), chunksize=None)
         assert md5_file(local_file) == remote_file.md5sum
 
     def test_upload_empty_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
