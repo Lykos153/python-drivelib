@@ -116,6 +116,52 @@ class TestGoogleDrive:
         creds = Credentials.from_authorized_user_file(token_file)
         GoogleDrive(creds)
 
+class TestDriveItem:
+    def test_rename_flat(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        new_name = random_string()
+
+        remote_file.rename(new_name)
+        assert remote_file.name == new_name
+        assert remote_tmpdir.child(new_name) == remote_file
+
+    def test_rename_subdir(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_tmpdir.create_path("1/2/3")
+        remote_file.rename("1/2/3/b")
+        assert remote_tmpdir.child_from_path("1/2/3/b") == remote_file
+
+    def test_rename_target_dir_does_not_exist(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        with pytest.raises(FileNotFoundError):
+            remote_file.rename("a/b")
+
+    def test_rename_target_dir_is_a_file(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_tmpdir.new_file("file").upload_empty()
+        with pytest.raises(NotADirectoryError):
+            remote_file.rename("file/b")
+
+    @pytest.mark.skip
+    def test_rename_only_target_dir_no_basename(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file("filename")
+        remote_file.upload_empty()
+        remote_tmpdir.create_path("1/2/3")
+        remote_file.rename("1/2/3")
+        assert remote_tmpdir.child_from_path("1/2/3/filename") == remote_file
+
+    @pytest.mark.skip
+    def test_rename_target_exists(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_file.parent.new_file("existing_file").upload_empty()
+        remote_file.rename("existing_file")
+        assert remote_tmpdir.child("existing_file") == remote_file
+
 class TestDriveFolder:
     def test_mkdir(self, gdrive: GoogleDrive):
         folder = gdrive.mkdir(random_string())

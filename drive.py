@@ -107,8 +107,18 @@ class DriveItem(ABC):
         else:
             return None
 
-    def rename(self, new_name):
-        self.move(self.parent, new_name)
+    def rename(self, target):
+        splitpath = target.rsplit('/', 1)
+        if len(splitpath) == 1:
+            new_name = splitpath[0]
+            parent = self.parent
+        else:
+            new_name = splitpath[1]
+            parent = self.parent.child_from_path(splitpath[0])
+            if not parent.isfolder():
+                raise NotADirectoryError()
+
+        self.move(parent, new_name)
 
     def move(self, new_dest, new_name=None):
         result = self.drive.service.files().update(
