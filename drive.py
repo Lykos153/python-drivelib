@@ -49,14 +49,13 @@ class Credentials(google.oauth2.credentials.Credentials,
     @classmethod
     def from_json(cls, json_string):
         a = json.loads(json_string)
-        return Credentials(
-            token=a['access_token'],
-            refresh_token=a['refresh_token'],
-            id_token=a['id_token'],
-            token_uri=a['token_uri'],
-            client_id=a['client_id'],
-            client_secret=a['client_secret'],
-            scopes=a['scopes'])
+        return cls.from_authorized_user_info(a, a['scopes'])
+
+    @classmethod
+    def from_authorized_user_file(cls, filename):
+        with open(filename, 'r') as fh:
+            a = json.load(fh)
+        return cls.from_authorized_user_info(a, a['scopes'])
 
     def to_json(self):
         to_serialize = dict()
@@ -474,8 +473,11 @@ class GoogleDrive(DriveFolder):
             raise NotAuthenticatedError("Could not get requested scopes")
         return Credentials.to_json(creds)
 
-    def __init__(self, creds_json):
-        self.creds = Credentials.from_json(creds_json)
+    def __init__(self, creds):
+        try:
+            self.creds = Credentials.from_json(creds)
+        except TypeError:
+            self.creds = creds
 
         if self.creds.expired and self.creds.refresh_token:
             self.creds.refresh(Request())

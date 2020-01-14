@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from hashlib import md5
 
+from drive import Credentials
 from drive import GoogleDrive
 from drive import DriveFile
 from drive import DriveFolder
@@ -108,8 +109,12 @@ class TestGoogleDrive:
     def test_appdata_folder(self, gdrive_appdata: GoogleDrive):
         assert hasattr(gdrive_appdata, "appdata")
 
-    def test_json_creds(self, gdrive: GoogleDrive):
+    def test_auth_json_creds(self, gdrive: GoogleDrive):
         GoogleDrive(gdrive.json_creds())
+
+    def test_auth_creds(self):
+        creds = Credentials.from_authorized_user_file(token_file)
+        GoogleDrive(creds)
 
 class TestDriveFolder:
     def test_mkdir(self, gdrive: GoogleDrive):
