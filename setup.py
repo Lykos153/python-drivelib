@@ -52,4 +52,10 @@ setup(
     extras_require={
         'test': ['coverage'],
     },
+    install_requires=[
+        'google-api-python-client',
+        'python-google-auth-oauthlib',
+        'google-auth',
+        'oauth2client',
+      ],
 )
