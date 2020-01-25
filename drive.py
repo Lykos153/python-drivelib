@@ -253,6 +253,13 @@ class DriveFolder(DriveItem):
             return child
         else:
             return child.create_path(splitpath[1])
+
+    def isempty(self) -> bool:
+        gen = self.children(pageSize=1)
+        if next(gen, None) is None:
+            return True
+        else:
+            return False
         
     def _reply_to_object(self, reply):
         if reply['mimeType'] == 'application/vnd.google-apps.folder':

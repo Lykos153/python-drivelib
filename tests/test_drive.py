@@ -274,6 +274,11 @@ class TestDriveFolder:
         folder = remote_tmpdir.create_path("./1/2a/../2b/")
         assert folder == remote_tmpdir.child_from_path("1/2b")
 
+    def test_isempty(self, remote_tmp_subdir: DriveFolder):
+        assert remote_tmp_subdir.isempty() == True
+        remote_tmp_subdir.new_file(random_string()).upload_empty()
+        assert remote_tmp_subdir.isempty() == False
+
 class TestDriveFile:
     def test_download(self, tmpfile: Path, remote_tmpfile):
         # depends on test_upload
