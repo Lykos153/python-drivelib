@@ -5,14 +5,14 @@ import os
 from pathlib import Path
 from hashlib import md5
 
-from drive import Credentials
-from drive import GoogleDrive
-from drive import DriveFile
-from drive import DriveFolder
-from drive import ResumableMediaUploadProgress
+from drivelib import Credentials
+from drivelib import GoogleDrive
+from drivelib import DriveFile
+from drivelib import DriveFolder
+from drivelib import ResumableMediaUploadProgress
 
-from drive import CheckSumError
-from drive import HttpError
+from drivelib import CheckSumError
+from drivelib import HttpError
 
 
 token_file = "tests/token.json"
