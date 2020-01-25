@@ -1,3 +1,5 @@
+from __future__ import annotations #only > 3.7, better to find a different solution
+
 import os
 from abc import ABC, abstractmethod
 import json
@@ -17,6 +19,12 @@ from googleapiclient.http import MediaUploadProgress
 from googleapiclient.http import MediaDownloadProgress
 
 from google.auth.exceptions import RefreshError
+
+# import logging
+# import httplib2
+# httplib2.debuglevel = 4
+# logger = logging.getLogger()
+# logger.setLevel(logging.DEBUG)
 
 # Ideas: Make this lib more Path-like
 # Multple parents could be modeled as inode number
@@ -88,8 +96,8 @@ class DriveItem(ABC):
 
     def __init__(self, drive, parent_ids, name, id_, spaces):
         self.drive = drive
-        self.name = name
-        self.id = id_
+        self.name = name # TODO: property. Setter => rename
+        self.id = id_ # TODO: property
         self.parent_ids = parent_ids
         self.spaces = spaces
 
@@ -217,7 +225,7 @@ class DriveFolder(DriveItem):
     def new_file(self, filename):
         return DriveFile(self.drive, [self.id], filename)
         
-    def child_from_path(self, path):
+    def child_from_path(self, path) -> DriveItem:
         #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
 
@@ -235,7 +243,7 @@ class DriveFolder(DriveItem):
         else:
             return child.child_from_path(splitpath[1])
 
-    def create_path(self, path):
+    def create_path(self, path) -> DriveFolder:
         #TODO: Accept Path objects for path
         splitpath = path.strip('/').split('/', 1)
 
