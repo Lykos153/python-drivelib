@@ -54,7 +54,7 @@ setup(
     },
     install_requires=[
         'google-api-python-client',
-        'python-google-auth-oauthlib',
+        'google-auth-oauthlib',
         'google-auth',
         'oauth2client',
       ],
