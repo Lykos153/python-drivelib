@@ -365,6 +365,7 @@ class DriveFile(DriveItem):
         result = json.loads(response)
         self.id = result['id']
         self.name = result['name']
+        self.resumable_uri = None
 
     def upload_empty(self):
         file_metadata = {
@@ -459,7 +460,6 @@ class ResumableUploadRequest:
                     start_byte = 0
                     while start_byte < self.resumable_progress:
                         content_length = min(self.media_body.chunksize(), self.resumable_progress-start_byte)
-                        print(start_byte, start_byte+content_length)
                         yield self.media_body.getbytes(start_byte, content_length)
                         start_byte += content_length
                 for chunk in file_in_chunks():
@@ -472,7 +472,13 @@ class ResumableUploadRequest:
             elif status['status'] == '200':
                 self.resumable_progress = self.media_body.size()
                 result = json.loads(resp)
-                remote_md5 = self.service.files().get(fileId=result['id'], fields="md5Checksum").execute()['md5Checksum']
+                try:
+                    remote_md5 = self.service.files().get(fileId=result['id'], fields="md5Checksum").execute()['md5Checksum']
+                except HttpError as e:
+                    if e.resp.status == 404:
+                        raise FileNotFoundError("File was successfully uploaded but since has been deleted")
+                    else:
+                        raise
                 if remote_md5 != self._range_md5.hexdigest():
                     raise CheckSumError("Checksum mismatch. Need to repeat upload.")
         else:

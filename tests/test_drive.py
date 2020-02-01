@@ -441,6 +441,23 @@ class TestDriveFile:
             remote_file.upload(str(local_file))
         assert remote_file.id == id_pre_upload
 
+    def test_upload_resume_deleted(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        chunksize = chunksize_min
+        local_file = tmpfile(size_bytes=chunksize*2)
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        remote_file.upload(str(local_file))
+        remote_file.remove()
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        remote_file.resumable_uri = progress.status.resumable_uri
+        with pytest.raises(FileNotFoundError):
+            remote_file.upload(str(local_file))
+
+
+
+
 class TestMetadata:
     def test_get_metadata(self, remote_tmpfile: DriveFile):
         remote_file = remote_tmpfile(size_bytes=700)
