@@ -447,7 +447,11 @@ class TestDriveFile:
         remote_file = remote_tmpdir.new_file(local_file.name)
         progress = ProgressExtractor(abort_at=0.0)
         with pytest.raises(AbortTransfer):
-            remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+            remote_file.upload(
+                                str(local_file), 
+                                chunksize=chunksize,
+                                progress_handler=progress.update_status
+                            )
         remote_file.upload(str(local_file))
         remote_file.remove()
         remote_file = remote_tmpdir.new_file(local_file.name)
@@ -455,6 +459,24 @@ class TestDriveFile:
         with pytest.raises(FileNotFoundError):
             remote_file.upload(str(local_file))
 
+    def test_upload_resume_with_stored_uri(self, tmpfile: Path, 
+                                            remote_tmpdir: DriveFolder):
+        chunksize = chunksize_min
+        local_file = tmpfile(size_bytes=chunksize*2)
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        progress = ProgressExtractor(abort_at=0.0)
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(
+                                str(local_file), 
+                                chunksize=chunksize,
+                                progress_handler=progress.update_status
+                            )
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        remote_file.upload(
+                            str(local_file),
+                            chunksize=chunksize,
+                            resumable_uri=progress.status.resumable_uri
+                        )
 
 
 

@@ -435,13 +435,29 @@ class ResumableUploadRequest:
             if status['status'] not in ('200', '308'):
                 raise HttpError(status, resp)
 
+            self._range_md5 = hashlib.md5()
+            def file_in_chunks(start_byte: int, end_byte: int, chunksize: int = 4*1024**2):
+                while start_byte < end_byte:
+                    content_length = min(chunksize, end_byte-start_byte)
+                    yield self.media_body.getbytes(start_byte, content_length)
+                    start_byte += content_length
+
             if status['status'] == '200':
                 self._resumable_progress = self.media_body.size()
+
+                for chunk in file_in_chunks(0, self._resumable_progress):
+                    self._range_md5.update(chunk)
             elif 'range' in status.keys():
-                byte_range = status['range']
-                self._resumable_progress = int(byte_range.replace('bytes=0-', '', 1))+1
+                self._resumable_progress = int(status['range'].replace('bytes=0-', '', 1))+1
+
+                for chunk in file_in_chunks(0, self._resumable_progress):
+                    self._range_md5.update(chunk)
+                if status['x-range-md5'] != self._range_md5.hexdigest():
+                    raise CheckSumError("Checksum mismatch. Need to repeat upload.")
+
             else:
                 self._resumable_progress = 0
+
         return self._resumable_progress
 
     @resumable_progress.setter
@@ -454,16 +470,6 @@ class ResumableUploadRequest:
         content = self.media_body.getbytes(self.resumable_progress, content_length)
         status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
         if status['status'] in ('200', '308'):
-            if not self._range_md5:
-                self._range_md5 = hashlib.md5()
-                def file_in_chunks():
-                    start_byte = 0
-                    while start_byte < self.resumable_progress:
-                        content_length = min(self.media_body.chunksize(), self.resumable_progress-start_byte)
-                        yield self.media_body.getbytes(start_byte, content_length)
-                        start_byte += content_length
-                for chunk in file_in_chunks():
-                    self._range_md5.update(chunk)
             self._range_md5.update(content)
             if status['status'] == '308':
                 if status['x-range-md5'] != self._range_md5.hexdigest():
@@ -480,7 +486,7 @@ class ResumableUploadRequest:
                     else:
                         raise
                 if remote_md5 != self._range_md5.hexdigest():
-                    raise CheckSumError("Checksum mismatch. Need to repeat upload.")
+                    raise CheckSumError("Final checksum mismatch. Need to repeat upload.")
         else:
             raise HttpError(status, resp)
             
