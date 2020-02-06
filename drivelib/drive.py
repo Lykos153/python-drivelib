@@ -20,7 +20,7 @@ from googleapiclient.http import MediaDownloadProgress
 
 from google.auth.exceptions import RefreshError
 
-# import logging
+import logging
 # import httplib2
 # httplib2.debuglevel = 4
 # logger = logging.getLogger()
@@ -452,6 +452,8 @@ class ResumableUploadRequest:
 
                 for chunk in file_in_chunks(0, self._resumable_progress):
                     self._range_md5.update(chunk)
+                logging.debug("Local MD5 (0-%d): %s", self._resumable_progress, self._range_md5.hexdigest())
+                logging.debug("Remote MD5 (0-%d): %s", self._resumable_progress, status['x-range-md5'])
                 if status['x-range-md5'] != self._range_md5.hexdigest():
                     raise CheckSumError("Checksum mismatch. Need to repeat upload.")
 
@@ -471,7 +473,9 @@ class ResumableUploadRequest:
         status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':str(content_length), 'Content-Range':upload_range}, body=content)
         if status['status'] in ('200', '308'):
             self._range_md5.update(content)
+            logging.debug("Local MD5 (0-%d): %s", self.resumable_progress+content_length, self._range_md5.hexdigest())
             if status['status'] == '308':
+                logging.debug("Remote MD5 (0-%d): %s", self.resumable_progress+content_length, status['x-range-md5'])
                 if status['x-range-md5'] != self._range_md5.hexdigest():
                     raise CheckSumError("Checksum mismatch. Need to repeat upload.")
                 self.resumable_progress += content_length
@@ -485,6 +489,7 @@ class ResumableUploadRequest:
                         raise FileNotFoundError("File was successfully uploaded but since has been deleted")
                     else:
                         raise
+                logging.debug("Remote MD5 (0-%d): %s", self.resumable_progress, remote_md5)
                 if remote_md5 != self._range_md5.hexdigest():
                     raise CheckSumError("Final checksum mismatch. Need to repeat upload.")
         else:
