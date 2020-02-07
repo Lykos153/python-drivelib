@@ -3,6 +3,7 @@ import string
 import random
 import os
 from pathlib import Path
+import shutil
 from hashlib import md5
 
 from drivelib import Credentials
@@ -373,7 +374,10 @@ class TestDriveFile:
         chunksize = chunksize_min
         local_file_orig = tmpfile(size_bytes=chunksize*3)
         local_file_same_size = tmpfile(size_bytes=chunksize*3)
-        local_file_different_size = tmpfile(size_bytes=chunksize*5)
+        local_file_different_size = tmpfile(size_bytes=None)
+        shutil.copy(str(local_file_orig), str(local_file_different_size))
+        with local_file_different_size.open('ba') as fh:
+            fh.write(os.urandom(chunksize))
 
         ## Test size mismatch
         remote_file = remote_tmpdir.new_file(local_file_orig.name)
