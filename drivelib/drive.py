@@ -21,6 +21,7 @@ from googleapiclient.http import MediaDownloadProgress
 from google.auth.exceptions import RefreshError
 
 import logging
+logging.basicConfig(level=logging.DEBUG)
 # import httplib2
 # httplib2.debuglevel = 4
 # logger = logging.getLogger()
@@ -433,6 +434,7 @@ class ResumableUploadRequest:
             status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
             
             if status['status'] not in ('200', '308'):
+                #Should 404 result in a FileNotFound error?
                 raise HttpError(status, resp)
 
             self._range_md5 = hashlib.md5()
@@ -516,6 +518,9 @@ class GoogleDrive(DriveFolder):
         return Credentials.to_json(creds)
 
     def __init__(self, creds):
+        #TODO
+        # https://levelup.gitconnected.com/google-drive-api-with-python-part-ii-connect-to-google-drive-and-search-for-file-7138422e0563
+        # https://github.com/googleapis/google-api-python-client/issues/803#issuecomment-578151576
         try:
             self.creds = Credentials.from_json(creds)
         except TypeError:
