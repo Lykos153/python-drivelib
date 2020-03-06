@@ -8,6 +8,7 @@ import hashlib
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
 
+import google_auth_httplib2
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -524,7 +525,12 @@ class GoogleDrive(DriveFolder):
         if self.creds.expired and self.creds.refresh_token:
             self.creds.refresh(Request())
 
-        self._service = build('drive', 'v3', credentials=self.creds)
+        http = google_auth_httplib2.AuthorizedHttp(self.creds)
+
+        #see bug https://github.com/googleapis/google-api-python-client/issues/803#issuecomment-578151576
+        http.http.redirect_codes = set(http.http.redirect_codes) - {308}
+
+        self._service = build('drive', 'v3', http=http)
 
         self.id = None
         self.drive = self
