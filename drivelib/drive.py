@@ -56,6 +56,7 @@ class AmbiguousPathError(Exception):
 
 class Credentials(google.oauth2.credentials.Credentials,
                 oauth2client.client.Credentials):
+    #TODO get rid of oauth2client dependency
     @classmethod
     def from_json(cls, json_string):
         a = json.loads(json_string)
@@ -157,8 +158,10 @@ class DriveItem(ABC):
                                 body=metadata,
                                 fields=','.join(metadata.keys()),
                                 ).execute()
+        #TODO update local array
 
     def meta_get(self, fields: str) -> dict:
+        #TODO cache metadata
         return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
 
     def refresh(self):
@@ -435,6 +438,7 @@ class ResumableUploadRequest:
             status, resp = self.service._http.request(self.resumable_uri, method='PUT', headers={'Content-Length':'0', 'Content-Range':upload_range})
             
             if status['status'] not in ('200', '308'):
+                #Should 404 result in a FileNotFound error?
                 raise HttpError(status, resp)
 
             self._range_md5 = hashlib.md5()
