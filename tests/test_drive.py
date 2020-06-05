@@ -111,7 +111,11 @@ class TestGoogleDrive:
         assert hasattr(gdrive_appdata, "appdata")
 
     def test_auth_json_creds(self, gdrive: GoogleDrive):
-        GoogleDrive(gdrive.json_creds())
+        json_creds = gdrive.json_creds()
+        GoogleDrive(json_creds, autorefresh=True)
+        # Check if creds stay the same when not refreshing
+        g = GoogleDrive(json_creds,autorefresh=False)
+        assert g.json_creds() == json_creds
 
     def test_auth_creds(self):
         creds = Credentials.from_authorized_user_file(token_file)
