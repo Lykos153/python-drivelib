@@ -11,6 +11,7 @@ from drivelib import GoogleDrive
 from drivelib import DriveFile
 from drivelib import DriveFolder
 from drivelib import ResumableMediaUploadProgress
+from drivelib import InvalidUrlError
 
 from drivelib import CheckSumError
 from drivelib import HttpError
@@ -121,6 +122,26 @@ class TestGoogleDrive:
         creds = Credentials.from_authorized_user_file(token_file)
         GoogleDrive(creds)
 
+    def test_url_to_id(self):
+        test_id = "Tae8Upai8Eizohk3xooheshiShieBae5ool2Noo3aech"
+
+        download_url = "https://drive.google.com/uc?id={}&export=download".format(test_id)
+        assert GoogleDrive.url_to_id(download_url) == test_id
+
+        view_url = "https://drive.google.com/file/d/{}/view?usp=sharing".format(test_id)
+        assert GoogleDrive.url_to_id(view_url) == test_id
+
+        share_url = "https://drive.google.com/open?id={}".format(test_id)
+        assert GoogleDrive.url_to_id(share_url) == test_id
+
+        missing_id = "https://drive.google.com/uc?&export=download"
+        with pytest.raises(InvalidUrlError):
+            GoogleDrive.url_to_id(missing_id)
+
+        wrong_domain = "https://drive.somewhere.else/open?id={}".format(test_id)
+        with pytest.raises(InvalidUrlError):
+            GoogleDrive.url_to_id(wrong_domain)
+        
 class TestDriveItem:
     def test_rename_flat(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())

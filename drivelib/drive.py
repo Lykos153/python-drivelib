@@ -8,6 +8,8 @@ import hashlib
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
 
+from pathlib import PurePosixPath
+
 import google_auth_httplib2
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -52,6 +54,9 @@ class CheckSumError(Exception):
     pass
 
 class AmbiguousPathError(Exception):
+    pass
+
+class InvalidUrlError(Exception):
     pass
 
 class Credentials(google.oauth2.credentials.Credentials,
@@ -522,6 +527,24 @@ class GoogleDrive(DriveFolder):
         if not creds.has_scopes(SCOPES):
             raise NotAuthenticatedError("Could not get requested scopes")
         return Credentials.to_json(creds)
+
+    @classmethod
+    def url_to_id(cls, url: str):
+        url = urlparse(url)
+        if url.netloc != 'drive.google.com':
+            raise InvalidUrlError(url)
+        if url.path in ('/uc', '/open'):
+            try:
+                return parse_qs(url.query)['id'][0]
+            except KeyError:
+                raise InvalidUrlError("Has no ID", url)
+        else:
+            try:
+                path = PurePosixPath(url.path)
+                assert path.parts[0:3] == ('/', 'file','d')
+                return path.parts[3]
+            except (AssertionError, KeyError):
+                raise InvalidUrlError(url)
 
     def __init__(self, creds, autorefresh=True):
         try:
