@@ -183,7 +183,7 @@ class TestDriveItem:
     def test_rename_target_exists(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())
         remote_file.upload_empty()
-        remote_file.parent.new_file("existing_file").upload_empty()
+        remote_tmpdir.new_file("existing_file").upload_empty()
         with pytest.raises(FileExistsError):
             remote_file.rename("existing_file")
 
@@ -281,7 +281,7 @@ class TestDriveFolder:
         assert new_file.isfolder() == False
         assert new_file.id == None
         with pytest.raises(FileNotFoundError):
-            new_file.download(tmpfile)
+            new_file.download(tmpfile())
 
     def test_new_file_exists(self, remote_tmpdir: DriveFolder):
         filename = random_string()

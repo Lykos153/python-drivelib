@@ -209,7 +209,6 @@ class DriveFolder(DriveItem):
         return child
         
     def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):
-        #TODO: Add "name" argument
         query = "'{this}' in parents".format(this=self.id)
 
         if name:
