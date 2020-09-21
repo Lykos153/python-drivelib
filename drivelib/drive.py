@@ -3,6 +3,7 @@ from __future__ import annotations #only > 3.7, better to find a different solut
 import os
 from abc import ABC, abstractmethod
 import json
+import itertools
 
 import hashlib
 from urllib.parse import urlparse
@@ -54,7 +55,10 @@ class CheckSumError(Exception):
     pass
 
 class AmbiguousPathError(Exception):
-    pass
+    def __init__(self, *args, **kwargs):
+        if "duplicates" in kwargs:
+            self.duplicates = kwargs["duplicates"]
+        super().__init__(*args)
 
 class InvalidUrlError(Exception):
     pass
@@ -204,8 +208,10 @@ class DriveFolder(DriveItem):
         child = next(gen, None)
         if child is None:
             raise FileNotFoundError(name)
-        if next(gen, None) is not None:
-            raise AmbiguousPathError("Two or more files {name}".format(name=name))
+        next_child = next(gen, None)
+        if next_child is not None:
+            duplicates = itertools.chain((child, next_child), gen)
+            raise AmbiguousPathError("Two or more files {name}".format(name=name), duplicates=duplicates)
         return child
         
     def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):

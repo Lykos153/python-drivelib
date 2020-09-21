@@ -12,6 +12,7 @@ from drivelib import DriveFile
 from drivelib import DriveFolder
 from drivelib import ResumableMediaUploadProgress
 from drivelib import InvalidUrlError
+from drivelib import AmbiguousPathError
 
 from drivelib import CheckSumError
 from drivelib import HttpError
@@ -227,6 +228,16 @@ class TestDriveFolder:
         file_ = remote_tmpdir.new_file(filename)
         file_.upload_empty()
         assert file_ == remote_tmpdir.child(filename)
+
+    def test_child_duplicate(self, remote_tmpdir: DriveFolder):
+        filename = random_string()
+        remote_tmpdir.new_file(filename).upload_empty()
+        remote_tmpdir.new_file(filename, ignore_existing=True).upload_empty()
+        with pytest.raises(AmbiguousPathError) as excinfo:
+            remote_tmpdir.child(filename)
+        e = excinfo.value
+        assert hasattr(e, "duplicates")
+        assert len(list(e.duplicates)) == 2
 
     def test_children(self, remote_tmp_subdir: DriveFolder, remote_tmpfile):
         file_count = 5
