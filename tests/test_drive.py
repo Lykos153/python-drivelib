@@ -187,6 +187,13 @@ class TestDriveItem:
         with pytest.raises(FileExistsError):
             remote_file.rename("existing_file")
 
+    def test_rename_ignore_existing(self, remote_tmpdir: DriveFolder):
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload_empty()
+        remote_tmpdir.new_file("existing_file").upload_empty()
+        remote_file.rename("existing_file", ignore_existing=True)
+        assert len(list(remote_tmpdir.children(name="existing_file"))) == 2
+
 class TestDriveFolder:
     def test_mkdir(self, gdrive: GoogleDrive):
         folder = gdrive.mkdir(random_string())
@@ -198,6 +205,12 @@ class TestDriveFolder:
         folder1 = remote_tmpdir.mkdir(foldername)
         folder2 = remote_tmpdir.mkdir(foldername)
         assert folder1 == folder2
+
+    def test_mkdir_ignore_existing(self, remote_tmpdir: DriveFolder):
+        foldername = random_string()
+        folder1 = remote_tmpdir.mkdir(foldername)
+        folder2 = remote_tmpdir.mkdir(foldername, ignore_existing=True)
+        assert folder1 != folder2
 
     def test_mkdir_exists_file(self, remote_tmpdir: DriveFolder):
         foldername = random_string()
@@ -269,6 +282,15 @@ class TestDriveFolder:
         assert new_file.id == None
         with pytest.raises(FileNotFoundError):
             new_file.download(tmpfile)
+
+    def test_new_file_exists(self, remote_tmpdir: DriveFolder):
+        filename = random_string()
+        remote_tmpdir.new_file(filename).upload_empty()
+        with pytest.raises(FileExistsError):
+            remote_tmpdir.new_file(filename)
+        new_file = remote_tmpdir.new_file(filename, ignore_existing=True)
+        new_file.upload_empty()
+        assert len(list(remote_tmpdir.children(name=filename))) == 2
 
     def test_child_from_path(self, remote_tmpdir: DriveFolder):
         depth = 3

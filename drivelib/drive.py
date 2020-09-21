@@ -125,7 +125,7 @@ class DriveItem(ABC):
         else:
             return None
 
-    def rename(self, target):
+    def rename(self, target, ignore_existing=False):
         splitpath = target.rsplit('/', 1)
         if len(splitpath) == 1:
             new_name = splitpath[0]
@@ -136,24 +136,29 @@ class DriveItem(ABC):
             if not parent.isfolder():
                 raise NotADirectoryError()
 
-        self.move(parent, new_name)
+        self.move(parent, new_name, ignore_existing=ignore_existing)
 
-    def move(self, new_dest, new_name=None):
+    def move(self, new_dest, new_name=None, ignore_existing=False):
         new_name = new_name or self.name
-        try:
-            child = new_dest.child(new_name)
-            raise FileExistsError("Filename already exists ({name}).".format(name=child.name))
-        except FileNotFoundError:
-            #TODO: Don't use exception for flow control here. Maybe implement exists()
-            result = self.drive.service.files().update(
-                                    fileId=self.id,
-                                    body={"name": new_name},
-                                    addParents=new_dest.id,
-                                    removeParents=self.parent.id,
-                                    fields='name, parents',
-                                    ).execute()
-            self.name = result['name']
-            self.parent_ids = result.get('parents', [])
+        if not ignore_existing:
+            try:
+                child = new_dest.child(new_name)
+                raise FileExistsError("Filename already exists ({name}).".format(name=child.name))
+            except FileNotFoundError:
+                pass
+            except AmbiguousPathError:
+                raise FileExistsError("Filename already exists multiple times: {name}".format(name=new_name))
+
+        #TODO: Don't use exception for flow control here. Maybe implement exists()
+        result = self.drive.service.files().update(
+                                fileId=self.id,
+                                body={"name": new_name},
+                                addParents=new_dest.id,
+                                removeParents=self.parent.id,
+                                fields='name, parents',
+                                ).execute()
+        self.name = result['name']
+        self.parent_ids = result.get('parents', [])
         
     def remove(self):
         self.drive.service.files().delete(fileId=self.id).execute()
@@ -224,23 +229,36 @@ class DriveFolder(DriveItem):
 
         return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces)
 
-    def mkdir(self, name):
-        try:
-            file_ = self.child(name)
-            if not file_.isfolder():
-                raise FileExistsError("Filename already exists ({name}) and it's not a folder.".format(name=name))
-            return file_
-        except FileNotFoundError:
-            #TODO: Don't use exception for flow control here. Maybe implement exists()
-            file_metadata = {
+    def mkdir(self, name, ignore_existing=False):
+        if not ignore_existing:
+            try:
+                file_ = self.child(name)
+                if file_.isfolder():
+                    return file_
+                else:
+                    raise FileExistsError("Filename already exists ({name}) and it's not a folder.".format(name=name))
+            except FileNotFoundError:
+                pass
+            except AmbiguousPathError:
+                raise FileExistsError("Filename already exists multiple times: {name}".format(name=name))
+        #TODO: Don't use exception for flow control here. Maybe implement exists()
+        file_metadata = {
+            'name': name, 
                 'name': name, 
-                'mimeType': 'application/vnd.google-apps.folder',
-                'parents': [self.id]
-            }
-            result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
-            return self._reply_to_object(result)
+            'name': name, 
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [self.id]
+        }
+        result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
+        return self._reply_to_object(result)
         
-    def new_file(self, filename):
+    def new_file(self, filename, ignore_existing=False):
+        if not ignore_existing:
+            try:
+                self.child(filename)
+                raise FileExistsError("Filename already exists ({name}).".format(name=filename))
+            except FileNotFoundError:
+                pass
         return DriveFile(self.drive, [self.id], filename)
         
     def child_from_path(self, path) -> DriveItem:
