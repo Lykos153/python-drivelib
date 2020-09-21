@@ -180,13 +180,12 @@ class TestDriveItem:
         remote_file.rename("1/2/3")
         assert remote_tmpdir.child_from_path("1/2/3/filename") == remote_file
 
-    @pytest.mark.skip
     def test_rename_target_exists(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())
         remote_file.upload_empty()
         remote_file.parent.new_file("existing_file").upload_empty()
-        remote_file.rename("existing_file")
-        assert remote_tmpdir.child("existing_file") == remote_file
+        with pytest.raises(FileExistsError):
+            remote_file.rename("existing_file")
 
 class TestDriveFolder:
     def test_mkdir(self, gdrive: GoogleDrive):

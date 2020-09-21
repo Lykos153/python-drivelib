@@ -139,15 +139,21 @@ class DriveItem(ABC):
         self.move(parent, new_name)
 
     def move(self, new_dest, new_name=None):
-        result = self.drive.service.files().update(
-                                fileId=self.id,
-                                body={"name": new_name or self.name},
-                                addParents=new_dest.id,
-                                removeParents=self.parent.id,
-                                fields='name, parents',
-                                ).execute()
-        self.name = result['name']
-        self.parent_ids = result.get('parents', [])
+        new_name = new_name or self.name
+        try:
+            child = new_dest.child(new_name)
+            raise FileExistsError("Filename already exists ({name}).".format(name=child.name))
+        except FileNotFoundError:
+            #TODO: Don't use exception for flow control here. Maybe implement exists()
+            result = self.drive.service.files().update(
+                                    fileId=self.id,
+                                    body={"name": new_name},
+                                    addParents=new_dest.id,
+                                    removeParents=self.parent.id,
+                                    fields='name, parents',
+                                    ).execute()
+            self.name = result['name']
+            self.parent_ids = result.get('parents', [])
         
     def remove(self):
         self.drive.service.files().delete(fileId=self.id).execute()
