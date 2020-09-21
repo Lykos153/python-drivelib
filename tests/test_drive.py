@@ -358,27 +358,27 @@ class TestDriveFile:
         assert md5_file(local_file) == remote_file.md5sum
 
     def test_upload(self, tmpfile: Path, remote_tmpdir: DriveFolder):
-        local_file = tmpfile(size_bytes = 1024)
-        
         # No chunksize specified
-        remote_file = remote_tmpdir.new_file(str(local_file.parent))
+        local_file = tmpfile(size_bytes = 1024)
+        remote_file = remote_tmpdir.new_file(local_file.name)
         remote_file.upload(str(local_file))
         assert md5_file(local_file) == remote_file.md5sum
 
         # Chunksize = None
-        remote_file = remote_tmpdir.new_file(str(local_file.parent))
+        local_file = tmpfile(size_bytes = 1024)
+        remote_file = remote_tmpdir.new_file(local_file.name)
         remote_file.upload(str(local_file), chunksize=None)
         assert md5_file(local_file) == remote_file.md5sum
 
     def test_upload_empty_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         local_file = tmpfile(size_bytes = 0)
-        remote_file = remote_tmpdir.new_file(str(local_file.parent))
+        remote_file = remote_tmpdir.new_file(local_file.name)
         remote_file.upload(str(local_file))
         assert md5_file(local_file) == remote_file.md5sum
 
     def test_upload_nonexistent(self, tmpfile: Path, remote_tmpdir):
         local_file = tmpfile(size_bytes = None)
-        remote_file = remote_tmpdir.new_file(str(local_file.parent))
+        remote_file = remote_tmpdir.new_file(local_file.name)
         with pytest.raises(FileNotFoundError):
             remote_file.upload(str(local_file))
 
