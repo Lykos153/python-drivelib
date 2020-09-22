@@ -4,6 +4,7 @@ import os
 from abc import ABC, abstractmethod
 import json
 import itertools
+from functools import wraps
 
 import hashlib
 from urllib.parse import urlparse
@@ -103,6 +104,15 @@ class ResumableMediaUploadProgress(MediaUploadProgress):
                                 self.resumable_uri
                             )
 
+def needs_id(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if not self.id:
+            raise FileNotFoundError
+        return f(self, *args, **kwargs)
+
+    return wrapper
+
 class DriveItem(ABC):
     #TODO: metadata as dict
     # Filename not as attribute but as key
@@ -142,6 +152,7 @@ class DriveItem(ABC):
 
         self.move(parent, new_name, ignore_existing=ignore_existing)
 
+    @needs_id
     def move(self, new_dest, new_name=None, ignore_existing=False):
         new_name = new_name or self.name
         if not ignore_existing:
@@ -164,6 +175,7 @@ class DriveItem(ABC):
         self.name = result['name']
         self.parent_ids = result.get('parents', [])
         
+    @needs_id
     def remove(self):
         self.drive.service.files().delete(fileId=self.id).execute()
         self.id = None
@@ -174,6 +186,7 @@ class DriveItem(ABC):
         except:
             raise HttpError("Could not trash file")
 
+    @needs_id
     def meta_set(self, metadata: dict):
         result = self.drive.service.files().update(
                                 fileId=self.id,
@@ -182,10 +195,12 @@ class DriveItem(ABC):
                                 ).execute()
         #TODO update local array
 
+    @needs_id
     def meta_get(self, fields: str) -> dict:
         #TODO cache metadata
         return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
 
+    @needs_id
     def refresh(self):
         result = self.drive.service.files().get(
                                 fileId=self.id,
@@ -214,6 +229,7 @@ class DriveFolder(DriveItem):
             raise AmbiguousPathError("Two or more files {name}".format(name=name), duplicates=duplicates)
         return child
         
+    @needs_id
     def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):
         query = "'{this}' in parents".format(this=self.id)
 
@@ -234,6 +250,7 @@ class DriveFolder(DriveItem):
 
         return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces)
 
+    @needs_id
     def mkdir(self, name, ignore_existing=False):
         if not ignore_existing:
             try:
@@ -257,6 +274,7 @@ class DriveFolder(DriveItem):
         result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
         return self._reply_to_object(result)
         
+    @needs_id
     def new_file(self, filename, ignore_existing=False):
         if not ignore_existing:
             try:
@@ -325,12 +343,11 @@ class DriveFile(DriveItem):
         super().__init__(drive, parent_ids, filename, file_id, spaces)
         self.resumable_uri = resumable_uri
         
+    @needs_id
     def download(self, local_file, chunksize=None, progress_handler=None):
         if not chunksize:
             chunksize = defaultChunksize
         #TODO: Accept Path objects for local_file
-        if not self.id:
-            raise FileNotFoundError
 
         range_md5 = hashlib.md5()
         try:
