@@ -502,6 +502,31 @@ class TestDriveFile:
             remote_file.upload(str(local_file))
         assert remote_file.id == id_pre_upload
 
+    @pytest.mark.xfail
+    def test_upload_parallel_same_filename(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        """
+        This test shows that preemptive tests for existing files cannot work on a multi-access-medium
+        Maybe we should completely ditch FileExistsError in all cases where it's not necessary
+        Actually only child() and child_from_path() need it and they should refer to children()
+        in the error message.
+        """
+        chunksize = chunksize_min
+        local_file = tmpfile(size_bytes=chunksize*5)
+        remote_file = remote_tmpdir.new_file(local_file.name)
+        progress = ProgressExtractor(abort_at=0.4)
+        # Abort first upload
+        with pytest.raises(AbortTransfer):
+            remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
+        
+        # Upload file with same name
+        new_file = remote_tmpdir.new_file(local_file.name)
+        new_file.upload(str(local_file))
+        assert new_file.parent.child(new_file.name) == new_file
+
+        #resume original upload, no error is raised
+        with(pytest.raises(FileExistsError)):
+            remote_file.upload(str(local_file))
+
     def test_upload_resume_deleted(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         chunksize = chunksize_min
         local_file = tmpfile(size_bytes=chunksize*2)
