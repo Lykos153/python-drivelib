@@ -12,6 +12,11 @@ from urllib.parse import parse_qs
 
 from pathlib import PurePosixPath
 
+try:
+    from collections.abc import Sequence
+except ImportError:
+    from collections import Sequence
+
 import google_auth_httplib2
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -113,6 +118,35 @@ def needs_id(f):
 
     return wrapper
 
+class _DriveParents(Sequence):
+    """This object provides sequence-like access to the logical ancestors
+    of a path."""
+    #TODO: Caching!!
+    def __init__(self, startpoint: DriveItem):
+        self._startpoint = startpoint
+
+    def __getitem__(self, idx):
+        if idx == 0:
+            return self._startpoint.parent
+        else:
+            try:
+                p = self[idx-1].parent
+            except AttributeError:
+                raise IndexError
+            if p is None:
+                raise IndexError
+            return p
+
+    def __len__(self):
+        l = 0
+        while(True):
+            try:
+                self[l]
+            except IndexError:
+                return l
+            else:
+                l += 1
+
 class DriveItem(ABC):
     #TODO: metadata as dict
     # Filename not as attribute but as key
@@ -138,6 +172,11 @@ class DriveItem(ABC):
             return self.drive.item_by_id(self.parent_ids[0])
         else:
             return None
+
+    @property
+    def parents(self):
+        "An immutable sequence providing access to the logical ancestors of the path"
+        return _DriveParents(self)
 
     def rename(self, target, ignore_existing=False):
         splitpath = target.rsplit('/', 1)
