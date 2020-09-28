@@ -185,16 +185,18 @@ class TestDriveItem:
     def test_rename_target_exists(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())
         remote_file.upload_empty()
-        remote_tmpdir.new_file("existing_file").upload_empty()
+        existing_file = remote_tmpdir.new_file(random_string())
+        existing_file.upload_empty()
         with pytest.raises(FileExistsError):
-            remote_file.rename("existing_file")
+            remote_file.rename(existing_file.name)
 
     def test_rename_ignore_existing(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())
         remote_file.upload_empty()
-        remote_tmpdir.new_file("existing_file").upload_empty()
-        remote_file.rename("existing_file", ignore_existing=True)
-        assert len(list(remote_tmpdir.children(name="existing_file"))) == 2
+        existing_file = remote_tmpdir.new_file(random_string())
+        existing_file.upload_empty()
+        remote_file.rename(existing_file.name, ignore_existing=True)
+        assert len(list(remote_tmpdir.children(name=existing_file.name))) == 2
 
 class TestDriveFolder:
     def test_mkdir(self, gdrive: GoogleDrive):
