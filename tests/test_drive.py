@@ -564,7 +564,33 @@ class TestDriveFile:
                             resumable_uri=progress.status.resumable_uri
                         )
 
+    def test_copy(self, remote_tmpfile: DriveFile, remote_tmp_subdir: DriveFolder):
+        remote_file = remote_tmpfile(size_bytes=1000)
 
+        with pytest.raises(FileExistsError):
+            fail = remote_file.copy()
+
+        duplicate = remote_file.copy(ignore_existing=True)
+        assert remote_file != duplicate
+        assert remote_file.md5sum == duplicate.md5sum
+        assert remote_file.name == duplicate.name
+        assert remote_file.parent == duplicate.parent
+
+        dup2 = remote_file.copy(dest=remote_tmp_subdir)
+        assert remote_file != dup2
+        assert remote_file.md5sum == dup2.md5sum
+        assert remote_file.name == dup2.name
+        assert dup2.parent == remote_tmp_subdir
+
+        with pytest.raises(FileExistsError):
+            fail = remote_file.copy(dest=remote_tmp_subdir)
+
+        copy = remote_file.copy(dest=remote_tmp_subdir, new_name="copy")
+        assert remote_file != copy
+        assert remote_file.md5sum == copy.md5sum
+        assert copy.name == "copy"
+        assert copy.parent == remote_tmp_subdir
+        
 
 class TestMetadata:
     def test_get_metadata(self, remote_tmpfile: DriveFile):

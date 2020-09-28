@@ -472,6 +472,28 @@ class DriveFile(DriveItem):
         result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
         self.id = result['id']
         self.name = result['name']
+
+    def copy(self, dest=None, new_name=None, ignore_existing=False):
+        if not dest:
+            dest = self.parent
+        if not new_name:
+            new_name = self.name
+        if not ignore_existing:
+            try:
+                dest.child(new_name)
+                raise FileExistsError
+            except FileNotFoundError:
+                pass
+
+        result = self.drive.service.files().copy(
+                                fileId=self.id,
+                                body={
+                                    "name": new_name,
+                                    "parents": [dest.id]
+                                },
+                                fields=self.drive.default_fields,
+                                ).execute()
+        return dest._reply_to_object(result)
        
     @property
     def md5sum(self):
