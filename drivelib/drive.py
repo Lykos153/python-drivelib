@@ -398,15 +398,11 @@ class DriveFile(DriveItem):
             local_file_size = 0
         
 
-        remote_file_size = int(self.drive.service.files().\
-                            get(fileId=self.id, fields="size").\
-                            execute()['size'])
-        
         download_url = "https://www.googleapis.com/drive/v3/files/{fileid}?alt=media".\
                                 format(fileid=self.id)
         
         with open(local_file, 'ab') as fh:
-            while local_file_size < remote_file_size:
+            while local_file_size < self.size:
                 download_range = "bytes={}-{}".\
                     format(local_file_size, local_file_size+chunksize-1)
                     
@@ -420,7 +416,7 @@ class DriveFile(DriveItem):
                         local_file_size+=int(resp['content-length'])
                         range_md5.update(content)
                         if progress_handler:
-                            progress_handler(MediaDownloadProgress(local_file_size, remote_file_size))
+                            progress_handler(MediaDownloadProgress(local_file_size, self.size))
                 else:
                     raise HttpError(resp, content)
         if range_md5.hexdigest() != self.md5sum:
