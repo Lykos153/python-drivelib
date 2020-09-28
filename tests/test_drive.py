@@ -491,7 +491,7 @@ class TestDriveFile:
             remote_file.upload(str(local_file), chunksize=chunksize, progress_handler=progress.update_status)
         assert progress.status.resumable_progress == chunksize
         remote_file.resumable_uri = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=invalid_id"
-        with pytest.raises(HttpError):
+        with pytest.raises(FileNotFoundError):
             remote_file.upload(str(local_file))
 
     def test_upload_existing_file(self, tmpfile: Path, remote_tmpfile: DriveFile):

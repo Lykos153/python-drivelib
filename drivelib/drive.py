@@ -30,6 +30,8 @@ from googleapiclient.http import MediaDownloadProgress
 
 from google.auth.exceptions import RefreshError
 
+from drivelib.errors import GoogleDriveAPIError
+
 import logging
 logger = logging.getLogger('drivelib')
 #logger.addHandler(logging.StreamHandler())
@@ -204,19 +206,25 @@ class DriveItem(ABC):
                 raise FileExistsError("Filename already exists multiple times: {name}".format(name=new_name))
 
         #TODO: Don't use exception for flow control here. Maybe implement exists()
-        result = self.drive.service.files().update(
-                                fileId=self.id,
-                                body={"name": new_name},
-                                addParents=new_dest.id,
-                                removeParents=self.parent.id,
-                                fields='name, parents',
-                                ).execute()
+        try:
+            result = self.drive.service.files().update(
+                                    fileId=self.id,
+                                    body={"name": new_name},
+                                    addParents=new_dest.id,
+                                    removeParents=self.parent.id,
+                                    fields='name, parents',
+                                    ).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         self.name = result['name']
         self.parent_ids = result.get('parents', [])
         
     @needs_id
     def remove(self):
-        self.drive.service.files().delete(fileId=self.id).execute()
+        try:
+            self.drive.service.files().delete(fileId=self.id).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         self.id = None
 
     def trash(self):
@@ -227,24 +235,33 @@ class DriveItem(ABC):
 
     @needs_id
     def meta_set(self, metadata: dict):
-        result = self.drive.service.files().update(
-                                fileId=self.id,
-                                body=metadata,
-                                fields=','.join(metadata.keys()),
-                                ).execute()
+        try:
+            result = self.drive.service.files().update(
+                                    fileId=self.id,
+                                    body=metadata,
+                                    fields=','.join(metadata.keys()),
+                                    ).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         #TODO update local array
 
     @needs_id
     def meta_get(self, fields: str) -> dict:
         #TODO cache metadata
-        return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
+        try:
+            return self.drive.service.files().get(fileId=self.id, fields=fields).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
 
     @needs_id
     def refresh(self):
-        result = self.drive.service.files().get(
-                                fileId=self.id,
-                                fields=self.drive.default_fields
-                            ).execute()
+        try:
+            result = self.drive.service.files().get(
+                                    fileId=self.id,
+                                    fields=self.drive.default_fields
+                                ).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         self.name = result['name']
         self.parent_ids = result['parents']
 
@@ -310,7 +327,10 @@ class DriveFolder(DriveItem):
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [self.id]
         }
-        result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
+        try:
+            result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
         
     @needs_id
@@ -418,7 +438,7 @@ class DriveFile(DriveItem):
                         if progress_handler:
                             progress_handler(MediaDownloadProgress(local_file_size, self.size))
                 else:
-                    raise HttpError(resp, content)
+                    raise GoogleDriveAPIError.from_reply(resp, content)
         if range_md5.hexdigest() != self.md5sum:
             os.remove(local_file)
             raise CheckSumError("Checksum mismatch. Need to repeat download.")
@@ -465,7 +485,10 @@ class DriveFile(DriveItem):
             'name': self.name, 
             'parents': self.parent_ids
         }
-        result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
+        try:
+            result = self.drive.service.files().create(body=file_metadata, fields=self.drive.default_fields).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         self.id = result['id']
         self.name = result['name']
 
@@ -480,8 +503,9 @@ class DriveFile(DriveItem):
                 raise FileExistsError
             except FileNotFoundError:
                 pass
-
-        result = self.drive.service.files().copy(
+        
+        try:
+            result = self.drive.service.files().copy(
                                 fileId=self.id,
                                 body={
                                     "name": new_name,
@@ -489,6 +513,8 @@ class DriveFile(DriveItem):
                                 },
                                 fields=self.drive.default_fields,
                                 ).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         return dest._reply_to_object(result)
        
     @property
@@ -532,7 +558,7 @@ class ResumableUploadRequest:
             api_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" 
             status, resp = self.service._http.request(api_url, method='POST', headers={'Content-Type':'application/json; charset=UTF-8'}, body=json.dumps(self.body)) 
             if status['status'] != '200':
-                raise HttpError(status, resp)
+                raise GoogleDriveAPIError.from_reply(status, resp)
             self._resumable_uri = status['location']
         return self._resumable_uri
         
@@ -549,7 +575,7 @@ class ResumableUploadRequest:
             
             if status['status'] not in ('200', '308'):
                 #Should 404 result in a FileNotFound error?
-                raise HttpError(status, resp)
+                raise GoogleDriveAPIError.from_reply(status, resp)
 
             self._range_md5 = hashlib.md5()
             def file_in_chunks(start_byte: int, end_byte: int, chunksize: int = 4*1024**2):
@@ -604,12 +630,12 @@ class ResumableUploadRequest:
                     if e.resp.status == 404:
                         raise FileNotFoundError("File was successfully uploaded but since has been deleted")
                     else:
-                        raise
+                        raise GoogleDriveAPIError.from_http_error(e)
                 logger.debug("Remote MD5 (0-%d): %s", self.resumable_progress, remote_md5)
                 if remote_md5 != self._range_md5.hexdigest():
                     raise CheckSumError("Final checksum mismatch. Need to repeat upload.")
         else:
-            raise HttpError(status, resp)
+            raise GoogleDriveAPIError.from_reply(status, resp)
             
         return ResumableMediaUploadProgress(self.resumable_progress, self.media_body.size(), self.resumable_uri), resp
 
@@ -689,14 +715,17 @@ class GoogleDrive(DriveFolder):
     def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive'):
         result = {'nextPageToken': ''}
         while "nextPageToken" in result:
-            result = self.service.files().list(
-                    pageSize=pageSize,
-                    spaces=spaces,
-                    fields="nextPageToken, files({})".format(self.default_fields),
-                    q=query,
-                    pageToken=result['nextPageToken'],
-                    orderBy=orderBy,
-                ).execute()
+            try:
+                result = self.service.files().list(
+                        pageSize=pageSize,
+                        spaces=spaces,
+                        fields="nextPageToken, files({})".format(self.default_fields),
+                        q=query,
+                        pageToken=result['nextPageToken'],
+                        orderBy=orderBy,
+                    ).execute()
+            except HttpError as err:
+                raise GoogleDriveAPIError.from_http_error(err)
             items = result.get('files', [])
 
             for file_ in items:
@@ -705,8 +734,11 @@ class GoogleDrive(DriveFolder):
     def item_by_id(self, id_):
         if hasattr(self, 'id') and id_ == self.id:
             return self
-        result = self.service.files().get(
-                                fileId=id_,
-                                fields=self.default_fields
-                            ).execute()
+        try:
+            result = self.service.files().get(
+                                    fileId=id_,
+                                    fields=self.default_fields
+                                ).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
