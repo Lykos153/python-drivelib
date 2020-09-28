@@ -112,6 +112,7 @@ class TestGoogleDrive:
     def test_appdata_folder(self, gdrive_appdata: GoogleDrive):
         assert hasattr(gdrive_appdata, "appdata")
 
+    @pytest.mark.skip
     def test_auth_json_creds(self, gdrive: GoogleDrive):
         json_creds = gdrive.json_creds()
         GoogleDrive(json_creds, autorefresh=True)
