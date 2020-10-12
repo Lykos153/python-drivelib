@@ -595,6 +595,91 @@ class TestDriveFile:
         assert copy.parent == remote_tmp_subdir
         
 
+class TestDriveShortcuts:
+    def test_shortcut_to_file(self, remote_tmpfile: DriveFile, remote_tmp_subdir: DriveFolder):
+        remote_file = remote_tmpfile()
+        shortcut_name = random_string()
+        shortcut_in_same_folder = remote_file.create_shortcut(shortcut_name)
+        assert shortcut_in_same_folder.isshortcut() == True
+        assert shortcut_in_same_folder.isfolder() == False
+        assert shortcut_in_same_folder.target == remote_file
+        assert shortcut_in_same_folder.parent == remote_file.parent
+        assert shortcut_in_same_folder.name == shortcut_name
+
+        shortcut_in_different_folder = remote_file.create_shortcut(random_string(), parent=remote_tmp_subdir)
+        assert shortcut_in_different_folder.parent == remote_tmp_subdir
+
+    def test_shortcut_to_folder(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        assert shortcut.isshortcut() == True
+        assert shortcut.isfolder() == False
+        assert shortcut.target == remote_tmp_subdir
+        assert shortcut.parent == remote_tmp_subdir.parent
+
+    def test_shortcut_to_root(self, gdrive: GoogleDrive):
+        shortcut = gdrive.create_shortcut(random_string())
+        assert shortcut.target == gdrive
+        assert shortcut.parent == gdrive
+        shortcut.remove()
+
+    def test_shortcut_download(self, tmpfile: Path, remote_tmpdir: DriveFolder):
+        local_file = tmpfile(size_bytes="500")
+        remote_file = remote_tmpdir.new_file(random_string()).upload(local_file)
+        shortcut = remote_file.create_shortcut(random_string())
+        dl_file = tmpfile()
+        shortcut.download(dl_file)
+        assert md5_file(local_file) == md5_file(dl_file)
+
+    def test_shortcut_upload(self, tmpfile: Path, remote_tmpfile: DriveFile):
+        local_file = tmpfile(size_bytes="500")
+        remote_file = remote_tmpfile()
+        shortcut = remote_file.create_shortcut(random_string())
+        # this behaviour will change once versioning is implemented
+        with pytest.raises(FileExistsError):
+            shortcut.upload(local_file)
+
+    def test_shortcut_mkdir(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        new_folder = shortcut.mkdir(random_string())
+        assert new_folder == remote_tmp_subdir.child(new_folder.name)
+
+    def test_shortcut_child(self, remote_tmp_subdir: DriveFolder):
+        new_file = remote_tmp_subdir.new_file(random_string()).upload_empty()
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        assert shortcut.child(new_file.name) == new_file
+
+    def test_shortcut_children(self, remote_tmp_subdir: DriveFolder):
+        new_file = remote_tmp_subdir.new_file(random_string()).upload_empty()
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        assert new_file in shortcut.children()
+
+    def test_shortcut_new_file(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        new_file = shortcut.new_file(random_string()).upload_empty()
+        assert remote_tmp_subdir.child(new_file.name) == new_file
+
+    def test_shortcut_child_from_path(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        new_path = "/".join((random_string() for _ in range(3)))
+        remote_folder = remote_tmp_subdir.create_path(new_path)
+        assert shortcut.child_from_path(new_path) == remote_folder
+
+    def test_shortcut_create_path(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        new_path = "/".join((random_string() for _ in range(3)))
+        remote_folder = shortcut.create_path(new_path)
+        assert remote_tmp_subdir.child_from_path(new_path) == remote_folder
+
+    def test_shortcut_isempty(self, remote_tmp_subdir: DriveFolder):
+        shortcut = remote_tmp_subdir.create_shortcut(random_string())
+        assert shortcut.isempty() is True
+        remote_tmp_subdir.mkdir(random_string())
+        assert shortcut.isempty() is False
+
+    @pytest.mark.xfail
+    def test_shortcut_metadata(self, remote_tmpdir: DriveFolder):
+        raise NotImplementedError
+
 class TestMetadata:
     def test_get_metadata(self, remote_tmpfile: DriveFile):
         remote_file = remote_tmpfile(size_bytes=700)
