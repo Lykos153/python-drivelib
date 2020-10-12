@@ -199,8 +199,8 @@ class TestDriveItem:
         assert len(list(remote_tmpdir.children(name=existing_file.name))) == 2
 
 class TestDriveFolder:
-    def test_mkdir(self, gdrive: GoogleDrive):
-        folder = gdrive.mkdir(random_string())
+    def test_mkdir(self, remote_tmpdir: DriveFolder):
+        folder = remote_tmpdir.mkdir(random_string())
         assert isinstance(folder, (DriveFolder))
         assert folder.isfolder()
 
