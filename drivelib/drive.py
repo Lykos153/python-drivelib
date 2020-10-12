@@ -31,6 +31,7 @@ from googleapiclient.http import MediaDownloadProgress
 from google.auth.exceptions import RefreshError
 
 from drivelib.errors import GoogleDriveAPIError
+from drivelib.errors import BackendError
 
 import logging
 logger = logging.getLogger('drivelib')
@@ -265,14 +266,57 @@ class DriveItem(ABC):
         self.name = result['name']
         self.parent_ids = result['parents']
 
+    @needs_id
+    def create_shortcut(self, name, parent=None):
+        if parent:
+            parent_id = parent.id
+        else:
+            try:
+                parent_id = self.parent.id
+            except AttributeError:
+                parent_id = 'root'
+                
+        shortcut_metadata = {
+            'name': name,
+            'parents': [parent_id],
+            'mimeType': 'application/vnd.google-apps.shortcut',
+            'shortcutDetails': {
+                'targetId': self.id
+            }
+        }
+        reply_fields = self.drive.default_fields+",shortcutDetails"
+        try:
+            result = self.drive.service.files().create(
+                                            body=shortcut_metadata,
+                                            fields=reply_fields).execute()
+        except HttpError as err:
+            raise GoogleDriveAPIError.from_http_error(err)
+        return self._reply_to_object(result)
+
+    def _reply_to_object(self, reply):
+        if reply['mimeType'] == 'application/vnd.google-apps.folder':
+            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
+        elif reply['mimeType'] == 'application/vnd.google-apps.shortcut':
+            return DriveShortcut(self.drive, reply.get('parents', []), reply['name'], reply['id'], reply['shortcutDetails']['targetId'], spaces=",".join(reply['spaces']))
+        else:
+            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
+
+
     @abstractmethod
     def isfolder(self):
-        pass
+        raise NotImplementedError
+
+    @abstractmethod
+    def isshortcut(self):
+        raise NotImplementedError
 
 class DriveFolder(DriveItem):
 
     def isfolder(self):
         return True  
+
+    def isshortcut(self):
+        return False
     
     def child(self, name):
         gen = self.children(name=name, pageSize=2)
@@ -387,16 +431,13 @@ class DriveFolder(DriveItem):
         else:
             return False
         
-    def _reply_to_object(self, reply):
-        if reply['mimeType'] == 'application/vnd.google-apps.folder':
-            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
-        else:
-            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
-
 class DriveFile(DriveItem):  
 
     def isfolder(self):
         return False  
+
+    def isshortcut(self):
+        return False
 
     def __init__(self, drive, parent_ids, filename, file_id=None, spaces='drive', resumable_uri=None):
         super().__init__(drive, parent_ids, filename, file_id, spaces)
@@ -529,6 +570,25 @@ class DriveFile(DriveItem):
             self._size = int(self.meta_get("size")["size"])
         return self._size
 
+class DriveShortcut(DriveItem):
+    def __init__(self, drive, parent_ids, filename, file_id, target_id, spaces='drive'):
+        super().__init__(drive, parent_ids, filename, file_id, spaces)
+        self.target = self.drive.item_by_id(target_id)
+
+    def isshortcut(self):
+        return True
+
+    def isfolder(self):
+        return False
+
+    def meta_get(self, fields: str) -> dict:
+        return self.target.meta_get(fields)
+
+    def meta_set(self, metadata: dict):
+        return self.target.meta_set(metadata)
+
+    def __getattr__(self, name):
+        return getattr(self.target, name)
 
 class ResumableUploadRequest:
     # TODO: actually implement interface for http_request
@@ -742,3 +802,9 @@ class GoogleDrive(DriveFolder):
         except HttpError as err:
             raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
+
+    # def create_shortcut(self, *args, **kwargs):
+    #     try:
+    #         super().create_shortcut(*args, **kwargs)
+    #     except BackendError:
+    #         raise BackendError("Can't create shortcut to root")
