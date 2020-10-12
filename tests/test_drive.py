@@ -13,6 +13,7 @@ from drivelib import DriveFolder
 from drivelib import ResumableMediaUploadProgress
 from drivelib import InvalidUrlError
 from drivelib import AmbiguousPathError
+from drivelib.errors import BackendError
 
 from drivelib import CheckSumError
 from drivelib import HttpError
@@ -617,21 +618,20 @@ class TestDriveShortcuts:
         assert shortcut.parent == remote_tmp_subdir.parent
 
     def test_shortcut_to_root(self, gdrive: GoogleDrive):
-        shortcut = gdrive.create_shortcut(random_string())
-        assert shortcut.target == gdrive
-        assert shortcut.parent == gdrive
-        shortcut.remove()
+        with pytest.raises(BackendError):
+            shortcut = gdrive.create_shortcut(random_string())
 
     def test_shortcut_download(self, tmpfile: Path, remote_tmpdir: DriveFolder):
-        local_file = tmpfile(size_bytes="500")
-        remote_file = remote_tmpdir.new_file(random_string()).upload(local_file)
+        local_file = tmpfile(size_bytes=500)
+        remote_file = remote_tmpdir.new_file(random_string())
+        remote_file.upload(local_file)
         shortcut = remote_file.create_shortcut(random_string())
         dl_file = tmpfile()
         shortcut.download(dl_file)
         assert md5_file(local_file) == md5_file(dl_file)
 
     def test_shortcut_upload(self, tmpfile: Path, remote_tmpfile: DriveFile):
-        local_file = tmpfile(size_bytes="500")
+        local_file = tmpfile(size_bytes=500)
         remote_file = remote_tmpfile()
         shortcut = remote_file.create_shortcut(random_string())
         # this behaviour will change once versioning is implemented
@@ -644,18 +644,21 @@ class TestDriveShortcuts:
         assert new_folder == remote_tmp_subdir.child(new_folder.name)
 
     def test_shortcut_child(self, remote_tmp_subdir: DriveFolder):
-        new_file = remote_tmp_subdir.new_file(random_string()).upload_empty()
+        new_file = remote_tmp_subdir.new_file(random_string())
+        new_file.upload_empty()
         shortcut = remote_tmp_subdir.create_shortcut(random_string())
         assert shortcut.child(new_file.name) == new_file
 
     def test_shortcut_children(self, remote_tmp_subdir: DriveFolder):
-        new_file = remote_tmp_subdir.new_file(random_string()).upload_empty()
+        new_file = remote_tmp_subdir.new_file(random_string())
+        new_file.upload_empty()
         shortcut = remote_tmp_subdir.create_shortcut(random_string())
         assert new_file in shortcut.children()
 
     def test_shortcut_new_file(self, remote_tmp_subdir: DriveFolder):
         shortcut = remote_tmp_subdir.create_shortcut(random_string())
-        new_file = shortcut.new_file(random_string()).upload_empty()
+        new_file = shortcut.new_file(random_string())
+        new_file.upload_empty()
         assert remote_tmp_subdir.child(new_file.name) == new_file
 
     def test_shortcut_child_from_path(self, remote_tmp_subdir: DriveFolder):
@@ -676,9 +679,16 @@ class TestDriveShortcuts:
         remote_tmp_subdir.mkdir(random_string())
         assert shortcut.isempty() is False
 
-    @pytest.mark.xfail
-    def test_shortcut_metadata(self, remote_tmpdir: DriveFolder):
-        raise NotImplementedError
+    def test_shortcut_metadata(self, remote_tmpdir: DriveFolder, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile(size_bytes=700)
+        shortcut = remote_file.create_shortcut(random_string())
+        metadata = shortcut.meta_get("size, starred, trashed")
+        assert metadata == {'size': '700', 'starred': False, 'trashed': False}
+
+        new_metadata = {'description': "an interesting file",
+                                'starred': True}
+        shortcut.meta_set(new_metadata)
+        assert remote_file.meta_get("description, starred") == new_metadata
 
 class TestMetadata:
     def test_get_metadata(self, remote_tmpfile: DriveFile):
