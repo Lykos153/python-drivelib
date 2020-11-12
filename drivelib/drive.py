@@ -331,7 +331,7 @@ class DriveFolder(DriveItem):
         return child
         
     @needs_id
-    def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None):
+    def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None, skip=0):
         query = "'{this}' in parents".format(this=self.id)
 
         if name:
@@ -349,7 +349,7 @@ class DriveFolder(DriveItem):
         else:
             query += " and trashed = false"
 
-        return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces)
+        return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces, skip=skip)
 
     @needs_id
     def mkdir(self, name, ignore_existing=False):
@@ -773,7 +773,8 @@ class GoogleDrive(DriveFolder):
     def json_creds(self):
         return Credentials.to_json(self.creds)
 
-    def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive'):
+    def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive', skip=0):
+        pageSize = min(1000, max(pageSize, skip))
         result = {'nextPageToken': ''}
         while "nextPageToken" in result:
             try:
@@ -789,7 +790,11 @@ class GoogleDrive(DriveFolder):
                 raise GoogleDriveAPIError.from_http_error(err)
             items = result.get('files', [])
 
-            for file_ in items:
+            for i, file_ in enumerate(items):
+                if skip > i:
+                    continue
+                if skip == i:
+                    pageSize = 100
                 yield self._reply_to_object(file_)
 
     def item_by_id(self, id_):

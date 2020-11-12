@@ -288,7 +288,12 @@ class TestDriveFolder:
 
         listed_files = list(remote_tmp_subdir.children(orderBy="name"))
 
-        assert created_files == listed_files
+        assert listed_files == created_files
+
+        # test skipping
+        skipping = 3
+        listed_files_skipped = list(remote_tmp_subdir.children(orderBy="name", skip=skipping))
+        assert listed_files_skipped == created_files[skipping:]
 
     def test_new_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         new_file = remote_tmpdir.new_file(random_string())
