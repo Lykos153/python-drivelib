@@ -290,6 +290,12 @@ class TestDriveFolder:
 
         assert created_files == listed_files
 
+    def test_children_page_size_over_1000(self, remote_tmp_subdir: DriveFolder):
+        raise NotImplementedError
+
+    def test_children_skip(self, remote_tmp_subdir: DriveFolder):
+        raise NotImplementedError
+
     def test_new_file(self, tmpfile: Path, remote_tmpdir: DriveFolder):
         new_file = remote_tmpdir.new_file(random_string())
         assert isinstance(new_file, (DriveFile))
