@@ -269,7 +269,7 @@ class DriveItem(ABC):
         self.parent_ids = result['parents']
 
     @needs_id
-    def create_shortcut(self, name, parent=None):
+    def create_shortcut(self, name, parent=None) -> DriveShortcut:
         if parent:
             parent_id = parent.id
         else:
@@ -294,7 +294,7 @@ class DriveItem(ABC):
             raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
 
-    def _reply_to_object(self, reply):
+    def _reply_to_object(self, reply) -> DriveItem:
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
             return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
         elif reply['mimeType'] == 'application/vnd.google-apps.shortcut':
@@ -304,22 +304,22 @@ class DriveItem(ABC):
 
 
     @abstractmethod
-    def isfolder(self):
+    def isfolder(self) -> bool:
         raise NotImplementedError
 
     @abstractmethod
-    def isshortcut(self):
+    def isshortcut(self) -> bool:
         raise NotImplementedError
 
 class DriveFolder(DriveItem):
 
-    def isfolder(self):
+    def isfolder(self) -> bool:
         return True  
 
-    def isshortcut(self):
+    def isshortcut(self) -> bool:
         return False
     
-    def child(self, name):
+    def child(self, name) -> DriveItem:
         gen = self.children(name=name, pageSize=2)
         child = next(gen, None)
         if child is None:
@@ -331,7 +331,7 @@ class DriveFolder(DriveItem):
         return child
         
     @needs_id
-    def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None, skip=0):
+    def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None, skip=0) -> Iterator(DriveItem):
         query = "'{this}' in parents".format(this=self.id)
 
         if name:
@@ -352,7 +352,7 @@ class DriveFolder(DriveItem):
         return self.drive.items_by_query(query, pageSize=pageSize, orderBy=orderBy, spaces=self.spaces, skip=skip)
 
     @needs_id
-    def mkdir(self, name, ignore_existing=False):
+    def mkdir(self, name, ignore_existing=False) -> DriveFolder:
         if not ignore_existing:
             try:
                 file_ = self.child(name)
@@ -379,7 +379,7 @@ class DriveFolder(DriveItem):
         return self._reply_to_object(result)
         
     @needs_id
-    def new_file(self, filename, ignore_existing=False):
+    def new_file(self, filename, ignore_existing=False) -> DriveFile:
         if not ignore_existing:
             try:
                 self.child(filename)
@@ -576,10 +576,10 @@ class DriveShortcut(DriveItem):
         super().__init__(drive, parent_ids, filename, file_id, spaces)
         self.target = self.drive.item_by_id(target_id)
 
-    def isshortcut(self):
+    def isshortcut(self) -> bool:
         return True
 
-    def isfolder(self):
+    def isfolder(self) -> bool:
         return False
 
     def meta_get(self, fields: str) -> dict:
@@ -773,7 +773,7 @@ class GoogleDrive(DriveFolder):
     def json_creds(self):
         return Credentials.to_json(self.creds)
 
-    def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive', skip=0):
+    def items_by_query(self, query, pageSize=100, orderBy=None, spaces='drive', skip=0) -> DriveItem:
         pageSize = min(1000, max(pageSize, skip))
         result = {'nextPageToken': ''}
         while "nextPageToken" in result:
@@ -797,7 +797,7 @@ class GoogleDrive(DriveFolder):
                     pageSize = 100
                 yield self._reply_to_object(file_)
 
-    def item_by_id(self, id_):
+    def item_by_id(self, id_) -> DriveItem:
         if hasattr(self, 'id') and id_ == self.id:
             return self
         try:
