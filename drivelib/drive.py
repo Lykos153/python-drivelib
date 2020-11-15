@@ -286,11 +286,10 @@ class DriveItem(ABC):
                 'targetId': self.id
             }
         }
-        reply_fields = self.drive.default_fields+",shortcutDetails"
         try:
             result = self.drive.service.files().create(
                                             body=shortcut_metadata,
-                                            fields=reply_fields).execute()
+                                            fields=self.drive.default_fields).execute()
         except HttpError as err:
             raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
@@ -756,7 +755,7 @@ class GoogleDrive(DriveFolder):
 
         self.id = None
         self.drive = self
-        self.default_fields = 'id, name, mimeType, parents, spaces'
+        self.default_fields = 'id, name, mimeType, parents, spaces, shortcutDetails'
         root_folder = self.item_by_id("root")
 
         super().__init__(self, root_folder.parent_ids, root_folder.name, root_folder.id, root_folder.spaces)

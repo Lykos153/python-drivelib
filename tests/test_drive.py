@@ -690,6 +690,12 @@ class TestDriveShortcuts:
         shortcut.meta_set(new_metadata)
         assert remote_file.meta_get("description, starred") == new_metadata
 
+    def test_shortcut_get_existing(self, remote_tmpdir: DriveFolder, remote_tmpfile: DriveFile):
+        remote_file = remote_tmpfile()
+        shortcut = remote_file.create_shortcut(random_string(), parent=remote_tmpdir)
+        same_shortcut = remote_tmpdir.child(shortcut.name)
+        assert shortcut == same_shortcut
+
 class TestMetadata:
     def test_get_metadata(self, remote_tmpfile: DriveFile):
         remote_file = remote_tmpfile(size_bytes=700)
