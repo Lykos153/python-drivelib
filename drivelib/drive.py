@@ -197,6 +197,8 @@ class DriveItem(ABC):
     @needs_id
     def move(self, new_dest, new_name=None, ignore_existing=False):
         new_name = new_name or self.name
+        if new_dest == self.parent and new_name == self.name:
+            return
         if not ignore_existing:
             try:
                 child = new_dest.child(new_name)
