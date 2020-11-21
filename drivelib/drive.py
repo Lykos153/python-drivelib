@@ -124,25 +124,29 @@ def needs_id(f):
 class _DriveParents(Sequence):
     """This object provides sequence-like access to the logical ancestors
     of a path."""
-    #TODO: Caching!!
     def __init__(self, startpoint: DriveItem):
         self._startpoint = startpoint
+        self._parents = dict()
 
     def __getitem__(self, idx):
+        if idx in self._parents and self._parents[idx] is not None:
+            return self._parents[idx]
         if idx == 0:
-            return self._startpoint.parent
+            self._parents[idx] = self._startpoint.parent
         else:
             try:
-                p = self[idx-1].parent
+                self._parents[idx] = self[idx - 1].parent
             except AttributeError:
                 raise IndexError
-            if p is None:
-                raise IndexError
-            return p
+
+        if self._parents[idx] is None:
+            raise IndexError
+
+        return self._parents[idx]
 
     def __len__(self):
         l = 0
-        while(True):
+        while True:
             try:
                 self[l]
             except IndexError:
