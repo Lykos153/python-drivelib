@@ -28,7 +28,8 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.http import MediaUploadProgress
 from googleapiclient.http import MediaDownloadProgress
 
-from google.auth.exceptions import RefreshError
+from expiringdict import ExpiringDict
+from datetime import datetime, timedelta
 
 from drivelib.errors import GoogleDriveAPIError
 from drivelib.errors import BackendError
@@ -121,6 +122,14 @@ def needs_id(f):
 
     return wrapper
 
+def autorefresh(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        if self.last_refreshed + self.refresh_after <= datetime.now():
+            self.refresh()
+        return f(self, *args, **kwargs)
+    return wrapper
+
 class _DriveParents(Sequence):
     """This object provides sequence-like access to the logical ancestors
     of a path."""
@@ -159,12 +168,14 @@ class DriveItem(ABC):
     # Filename not as attribute but as key
     # OR: filename as property method
 
-    def __init__(self, drive, parent_ids, name, id_, spaces):
+    def __init__(self, drive, parent_ids, name, id_, spaces, refresh_after=timedelta(minutes=30)):
         self.drive = drive
         self.name = name # TODO: property. Setter => rename
         self.id = id_ # TODO: property
         self.parent_ids = parent_ids
         self.spaces = spaces
+        self.last_refreshed = datetime.now()
+        self.refresh_after = refresh_after
 
     def __eq__(self, other):
         return self.id == other.id
@@ -174,11 +185,14 @@ class DriveItem(ABC):
         return hash(self.id)
 
     @property
+    @autorefresh
     def parent(self):
-        if self.parent_ids:
-            return self.drive.item_by_id(self.parent_ids[0])
-        else:
-            return None
+        if not hasattr(self, '_parent'):
+            if self.parent_ids:
+                self._parent = self.drive.item_by_id(self.parent_ids[0])
+            else:
+                self._parent = None
+        return self._parent
 
     @property
     def parents(self):
@@ -274,6 +288,7 @@ class DriveItem(ABC):
             raise GoogleDriveAPIError.from_http_error(err)
         self.name = result['name']
         self.parent_ids = result['parents']
+        self.last_refreshed = datetime.now()
 
     @needs_id
     def create_shortcut(self, name, parent=None) -> DriveShortcut:
@@ -303,11 +318,13 @@ class DriveItem(ABC):
 
     def _reply_to_object(self, reply) -> DriveItem:
         if reply['mimeType'] == 'application/vnd.google-apps.folder':
-            return DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
+            new_item = DriveFolder(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
         elif reply['mimeType'] == 'application/vnd.google-apps.shortcut':
-            return DriveShortcut(self.drive, reply.get('parents', []), reply['name'], reply['id'], reply['shortcutDetails']['targetId'], spaces=",".join(reply['spaces']))
+            new_item = DriveShortcut(self.drive, reply.get('parents', []), reply['name'], reply['id'], reply['shortcutDetails']['targetId'], spaces=",".join(reply['spaces']))
         else:
-            return DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
+            new_item = DriveFile(self.drive, reply.get('parents', []), reply['name'], reply['id'], spaces=",".join(reply['spaces']))
+        self.drive._id_cache[new_item.id] = new_item
+        return new_item
 
 
     @abstractmethod
@@ -327,6 +344,9 @@ class DriveFolder(DriveItem):
         return False
     
     def child(self, name) -> DriveItem:
+        child = self._get_from_name_cache(name)
+        if child:
+            return child
         gen = self.children(name=name, pageSize=2)
         child = next(gen, None)
         if child is None:
@@ -335,8 +355,20 @@ class DriveFolder(DriveItem):
         if next_child is not None:
             duplicates = itertools.chain((child, next_child), gen)
             raise AmbiguousPathError("Two or more files {name}".format(name=name), duplicates=duplicates)
+        self._add_to_name_cache(child)
         return child
-        
+
+    @needs_id
+    def _add_to_name_cache(self, item: DriveItem):
+        self.drive._name_cache['/'.join((self.id, item.name))] = item
+
+    @needs_id
+    def _delete_from_name_cache(self, item: DriveItem):
+        del self.drive._name_cache['/'.join((self.id, item.name))]
+
+    def _get_from_name_cache(self, name: str):
+        return self.drive._name_cache.get('/'.join(((self.id, name))), None)
+
     @needs_id
     def children(self, name=None, folders=True, files=True, trashed=False, pageSize=100, orderBy=None, skip=0) -> Iterator(DriveItem):
         query = "'{this}' in parents".format(this=self.id)
@@ -746,7 +778,7 @@ class GoogleDrive(DriveFolder):
             except (AssertionError, KeyError):
                 raise InvalidUrlError(url)
 
-    def __init__(self, creds, autorefresh=True):
+    def __init__(self, creds, autorefresh=True, caching=1000):
         try:
             self.creds = Credentials.from_json(creds)
         except TypeError:
@@ -763,6 +795,9 @@ class GoogleDrive(DriveFolder):
 
         self._service = build('drive', 'v3', http=http)
 
+        self._id_cache = ExpiringDict(max_len=caching, max_age_seconds=float('inf'))
+        self._name_cache = ExpiringDict(max_len=caching, max_age_seconds=60)
+
         self.id = None
         self.drive = self
         self.default_fields = 'id, name, mimeType, parents, spaces, shortcutDetails'
@@ -772,9 +807,6 @@ class GoogleDrive(DriveFolder):
 
         if 'https://www.googleapis.com/auth/drive.appdata' in self.creds.scopes:
             self.appdata = self.item_by_id("appDataFolder")
-        
-        #self.caching = caching
-        #TODO: Add caching ability
 
     @property
     def service(self):
@@ -810,6 +842,10 @@ class GoogleDrive(DriveFolder):
     def item_by_id(self, id_) -> DriveItem:
         if hasattr(self, 'id') and id_ == self.id:
             return self
+
+        if id_ in self._id_cache:
+            return self._id_cache[id_]
+
         try:
             result = self.service.files().get(
                                     fileId=id_,

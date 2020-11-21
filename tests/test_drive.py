@@ -144,7 +144,10 @@ class TestGoogleDrive:
         wrong_domain = "https://drive.somewhere.else/open?id={}".format(test_id)
         with pytest.raises(InvalidUrlError):
             GoogleDrive.url_to_id(wrong_domain)
-        
+
+    def test_id_cache(self):
+        raise NotImplementedError
+
 class TestDriveItem:
     def test_rename_flat(self, remote_tmpdir: DriveFolder):
         remote_file = remote_tmpdir.new_file(random_string())
@@ -198,6 +201,9 @@ class TestDriveItem:
         existing_file.upload_empty()
         remote_file.rename(existing_file.name, ignore_existing=True)
         assert len(list(remote_tmpdir.children(name=existing_file.name))) == 2
+
+    def test_auto_refresh(self):
+        raise NotImplementedError
 
     def test_resolve(self):
         raise NotImplementedError
@@ -349,6 +355,9 @@ class TestDriveFolder:
         assert remote_tmp_subdir.isempty() == True
         remote_tmp_subdir.new_file(random_string()).upload_empty()
         assert remote_tmp_subdir.isempty() == False
+
+    def test_name_cache(self):
+        raise NotImplementedError
 
 class TestDriveFile:
     def test_download(self, tmpfile: Path, remote_tmpfile):
