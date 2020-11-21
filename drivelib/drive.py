@@ -181,6 +181,9 @@ class DriveItem(ABC):
         "An immutable sequence providing access to the logical ancestors of the path"
         return _DriveParents(self)
 
+    def resolve(self) -> str:
+        return '/'.join((x.name if x != self.drive else '' for x in reversed(self.parents)))+'/'+self.name
+
     def rename(self, target, ignore_existing=False):
         splitpath = target.rsplit('/', 1)
         if len(splitpath) == 1:
@@ -588,6 +591,9 @@ class DriveShortcut(DriveItem):
     def meta_set(self, metadata: dict):
         return self.target.meta_set(metadata)
 
+    def resolve(self) -> str:
+        return self.target.resolve()
+
     def __getattr__(self, name):
         return getattr(self.target, name)
 
@@ -809,6 +815,8 @@ class GoogleDrive(DriveFolder):
             raise GoogleDriveAPIError.from_http_error(err)
         return self._reply_to_object(result)
 
+    def resolve(self) -> str:
+        return '/'
     # def create_shortcut(self, *args, **kwargs):
     #     try:
     #         super().create_shortcut(*args, **kwargs)
