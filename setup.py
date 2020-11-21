@@ -58,5 +58,6 @@ setup(
         'google-auth-httplib2',
         'google-auth',
         'oauth2client',
+        'expiringdict',
       ],
 )
