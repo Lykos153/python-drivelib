@@ -199,6 +199,9 @@ class TestDriveItem:
         remote_file.rename(existing_file.name, ignore_existing=True)
         assert len(list(remote_tmpdir.children(name=existing_file.name))) == 2
 
+    def test_resolve(self):
+        raise NotImplementedError
+
 class TestDriveFolder:
     def test_mkdir(self, remote_tmpdir: DriveFolder):
         folder = remote_tmpdir.mkdir(random_string())
