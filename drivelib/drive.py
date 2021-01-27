@@ -346,6 +346,7 @@ class DriveFolder(DriveItem):
     def child(self, name) -> DriveItem:
         child = self._get_from_name_cache(name)
         if child:
+            logger.debug("Found {} in name cache".format(name))
             return child
         gen = self.children(name=name, pageSize=2)
         child = next(gen, None)
@@ -844,6 +845,7 @@ class GoogleDrive(DriveFolder):
             return self
 
         if id_ in self._id_cache:
+            logger.debug("Found {} in id cache".format((id_)))
             return self._id_cache[id_]
 
         try:
